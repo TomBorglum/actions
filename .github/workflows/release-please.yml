@@ -5,13 +5,19 @@ name: Release Please
 # from the Conventional Commit messages since the last tag. Merging that PR creates
 # the git tag and the GitHub Release with the generated notes.
 #
-# Authenticates as the automation GitHub App rather than with GITHUB_TOKEN, because
-# events created by GITHUB_TOKEN do not trigger further workflow runs: the release PR
-# would never run the required SonarCloud gate, so main-protection could never be
-# satisfied and the release could never merge. App installation tokens have no such
-# restriction. The App needs Contents: read/write (branch, tag, release), Pull
-# requests: read/write (the release PR) and Issues: read/write (the autorelease:*
-# labels), and must be installed on this repository.
+# Authenticates as a GitHub App dedicated to this repository - not the App that
+# automates wsl-cloud-init. A dedicated App keeps the blast radius of a leaked private
+# key to this repository alone, which matters more here because what this repo
+# publishes runs inside other people's workflows. The cost is a second key to rotate.
+#
+# The App rather than GITHUB_TOKEN, because events created by GITHUB_TOKEN do not
+# trigger further workflow runs: the release PR would never run the required SonarCloud
+# gate, so main-protection could never be satisfied and the release could never merge.
+# App installation tokens have no such restriction.
+#
+# The App needs Contents: read/write (branch, tag, release), Pull requests: read/write
+# (the release PR) and Issues: read/write (the autorelease:* labels), and is installed
+# on this repository only ("Only select repositories").
 #
 # Two repository secrets are required: AUTOMATION_APP_CLIENT_ID and
 # AUTOMATION_APP_PRIVATE_KEY. A missing or empty one fails the token step with
