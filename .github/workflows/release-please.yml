@@ -11,7 +11,11 @@ name: Release Please
 # satisfied and the release could never merge. App installation tokens have no such
 # restriction. The App needs Contents: read/write (branch, tag, release), Pull
 # requests: read/write (the release PR) and Issues: read/write (the autorelease:*
-# labels).
+# labels), and must be installed on this repository.
+#
+# Two repository secrets are required: AUTOMATION_APP_CLIENT_ID and
+# AUTOMATION_APP_PRIVATE_KEY. A missing or empty one fails the token step with
+# "The 'client-id' (or deprecated 'app-id') input must be set to a non-empty string".
 #
 # release-please-action's README asks for contents/issues/pull-requests write at the
 # workflow level. That applies when it falls back to GITHUB_TOKEN; here every API call
@@ -33,7 +37,10 @@ jobs:
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: app-token
         with:
-          app-id: ${{ secrets.AUTOMATION_APP_ID }}
+          # client-id, not the deprecated app-id. These are different values:
+          # AUTOMATION_APP_CLIENT_ID holds the App's *Client ID* (App settings ->
+          # General -> Client ID), not the numeric App ID.
+          client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
