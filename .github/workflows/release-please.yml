@@ -5,8 +5,8 @@ name: Release Please
 # from the Conventional Commit messages since the last tag. Merging that PR creates
 # the git tag and the GitHub Release with the generated notes.
 #
-# Authenticates as the actions-bot GitHub App rather than with GITHUB_TOKEN, because
-# events created by GITHUB_TOKEN do not trigger further workflow runs: the release PR
+# Authenticates as the tomborglum-actions-bot GitHub App rather than with GITHUB_TOKEN,
+# because events created by GITHUB_TOKEN do not trigger further workflow runs: the PR
 # would never run the required SonarCloud gate, so main-protection could never be
 # satisfied and the release could never merge. App installation tokens have no such
 # restriction. The App needs Contents: read/write (branch, tag, release), Pull
@@ -14,8 +14,10 @@ name: Release Please
 # labels).
 #
 # One App per repository is the convention here (wsl-cloud-init-bot,
-# expense-tracker-bot, actions-bot), so a leaked private key reaches only the single
-# repository it automates. actions-bot is installed on this repository only.
+# expense-tracker-bot, tomborglum-actions-bot), so a leaked private key reaches only
+# the single repository it automates; this one is installed on this repository only.
+# The owner prefix is there because a bare "actions-bot" was already taken - App names
+# are globally unique, and "actions" is not a distinctive repository name.
 #
 # Two repository secrets are required: AUTOMATION_APP_CLIENT_ID and
 # AUTOMATION_APP_PRIVATE_KEY. A missing or empty one fails the token step with
