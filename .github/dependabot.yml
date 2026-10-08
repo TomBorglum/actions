@@ -1,0 +1,48 @@
+version: 2
+updates:
+  # CI-only actions: the ones this repo's own workflows run. "ci", not "deps" - these
+  # execute on this repo's runners and never reach a consumer, so their bumps must not
+  # cut a release. release-please treats "ci" as a hidden, non-releasable type.
+  #
+  # The "/" directory is special-cased by Dependabot's github-actions fetcher: it
+  # scans .github/workflows/*.y(a)ml AND a root-level action.yml. Since every action
+  # here lives in its own subdirectory, nothing consumer-facing is ever caught by this
+  # entry - see CONTRIBUTING.md, "Never put an action.yml at the repository root".
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      # Dependabot appends the colon and space itself, so this yields "ci: ..." -
+      # a subject release-please parses.
+      prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # When the first action lands, add a second entry in the SAME pull request, prefixed
+  # "deps". Actions referenced inside a published action.yml run on *consumers'*
+  # runners, so bumping one changes what they execute and must cut a patch release.
+  # Dependabot only fetches a directory's own action.yml, so each action needs listing
+  # - `directories` accepts globs, so "/setup-*" collapses several.
+  #
+  # The cooldown is the difference that matters: a "deps" bump republishes to other
+  # people's workflows, so leave upstream time to withdraw a bad or compromised
+  # release before it ships onward. The "ci" entry above needs none - a bad bump there
+  # breaks only this repo's CI, and sooner is better for a security fix.
+  #
+  # - package-ecosystem: "github-actions"
+  #   directories: ["/setup-direnv"]
+  #   schedule:
+  #     interval: "weekly"
+  #   commit-message:
+  #     prefix: "deps"
+  #   groups:
+  #     actions:
+  #       patterns:
+  #         - "*"
+  #   cooldown:
+  #     semver-major-days: 30
+  #     semver-minor-days: 7
+  #     semver-patch-days: 3

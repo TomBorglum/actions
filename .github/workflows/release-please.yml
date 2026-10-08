@@ -1,0 +1,82 @@
+name: Release Please
+
+# Automates releases. On every push to main, release-please opens (or updates) a
+# single "chore: release X.Y.Z" PR that bumps CHANGELOG.md and the version manifest
+# from the Conventional Commit messages since the last tag. Merging that PR creates
+# the git tag and the GitHub Release with the generated notes.
+#
+# Authenticates as the automation GitHub App rather than with GITHUB_TOKEN, because
+# events created by GITHUB_TOKEN do not trigger further workflow runs: the release PR
+# would never run the required SonarCloud gate, so main-protection could never be
+# satisfied and the release could never merge. App installation tokens have no such
+# restriction. The App needs Contents: read/write (branch, tag, release), Pull
+# requests: read/write (the release PR) and Issues: read/write (the autorelease:*
+# labels).
+#
+# release-please-action's README asks for contents/issues/pull-requests write at the
+# workflow level. That applies when it falls back to GITHUB_TOKEN; here every API call
+# goes through the App token passed below, and actions/checkout is handed the same
+# token explicitly, so contents: read is sufficient.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ secrets.AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # Everything below maintains the moving major and minor tags, so a consumer can
+      # write `@v1` and get every 1.x release without editing their workflow. This is
+      # release-please's own documented recipe for repositories that publish actions.
+      #
+      # `release_created` is only *set* when a release happened - the action hardcodes
+      # it to true and never writes false - so a bare truthiness check is correct here;
+      # `== 'true'` would also work but `!= 'true'` would not, and the asymmetry is
+      # easy to get wrong.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ steps.release.outputs.release_created }}
+        with:
+          # Full history: the tags being moved may point anywhere in it.
+          fetch-depth: 0
+          # Persist the App token so the `git push` below is authenticated as the App
+          # rather than as the restricted default GITHUB_TOKEN.
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Move the major and minor tags
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          SLUG: ${{ steps.app-token.outputs.app-slug }}
+          SHA: ${{ steps.release.outputs.sha }}
+          MAJOR: ${{ steps.release.outputs.major }}
+          MINOR: ${{ steps.release.outputs.minor }}
+        run: |
+          set -euo pipefail
+
+          git config user.name  "${SLUG}[bot]"
+          git config user.email "${SLUG}[bot]@users.noreply.github.com"
+
+          # Only vX and vX.Y move. The exact vX.Y.Z release-please just created is
+          # immutable, and the version-tags ruleset enforces that: its `v*.*.*`
+          # pattern needs two literal dots, which neither tag below has.
+          for tag in "v${MAJOR}" "v${MAJOR}.${MINOR}"; do
+            git tag -f -a "$tag" -m "Release $tag" "$SHA"
+            git push --force origin "refs/tags/$tag"
+          done
