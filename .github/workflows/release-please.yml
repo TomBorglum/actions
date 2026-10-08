@@ -5,19 +5,17 @@ name: Release Please
 # from the Conventional Commit messages since the last tag. Merging that PR creates
 # the git tag and the GitHub Release with the generated notes.
 #
-# Authenticates as a GitHub App dedicated to this repository - not the App that
-# automates wsl-cloud-init. A dedicated App keeps the blast radius of a leaked private
-# key to this repository alone, which matters more here because what this repo
-# publishes runs inside other people's workflows. The cost is a second key to rotate.
+# Authenticates as the actions-bot GitHub App rather than with GITHUB_TOKEN, because
+# events created by GITHUB_TOKEN do not trigger further workflow runs: the release PR
+# would never run the required SonarCloud gate, so main-protection could never be
+# satisfied and the release could never merge. App installation tokens have no such
+# restriction. The App needs Contents: read/write (branch, tag, release), Pull
+# requests: read/write (the release PR) and Issues: read/write (the autorelease:*
+# labels).
 #
-# The App rather than GITHUB_TOKEN, because events created by GITHUB_TOKEN do not
-# trigger further workflow runs: the release PR would never run the required SonarCloud
-# gate, so main-protection could never be satisfied and the release could never merge.
-# App installation tokens have no such restriction.
-#
-# The App needs Contents: read/write (branch, tag, release), Pull requests: read/write
-# (the release PR) and Issues: read/write (the autorelease:* labels), and is installed
-# on this repository only ("Only select repositories").
+# One App per repository is the convention here (wsl-cloud-init-bot,
+# expense-tracker-bot, actions-bot), so a leaked private key reaches only the single
+# repository it automates. actions-bot is installed on this repository only.
 #
 # Two repository secrets are required: AUTOMATION_APP_CLIENT_ID and
 # AUTOMATION_APP_PRIVATE_KEY. A missing or empty one fails the token step with
@@ -73,18 +71,34 @@ jobs:
           # rather than as the restricted default GITHUB_TOKEN.
           token: ${{ steps.app-token.outputs.token }}
 
+      - name: Resolve the bot's tagger identity
+        id: bot
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          # create-github-app-token exposes the slug but not the numeric user id,
+          # which the noreply address needs. Same pattern as expense-tracker's
+          # update-python.yml.
+          id="$(gh api "/users/${SLUG}[bot]" --jq .id)"
+          echo "name=${SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=${id}+${SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
       - name: Move the major and minor tags
         if: ${{ steps.release.outputs.release_created }}
         env:
-          SLUG: ${{ steps.app-token.outputs.app-slug }}
+          NAME: ${{ steps.bot.outputs.name }}
+          EMAIL: ${{ steps.bot.outputs.email }}
           SHA: ${{ steps.release.outputs.sha }}
           MAJOR: ${{ steps.release.outputs.major }}
           MINOR: ${{ steps.release.outputs.minor }}
         run: |
           set -euo pipefail
 
-          git config user.name  "${SLUG}[bot]"
-          git config user.email "${SLUG}[bot]@users.noreply.github.com"
+          git config user.name  "$NAME"
+          git config user.email "$EMAIL"
 
           # Only vX and vX.Y move. The exact vX.Y.Z release-please just created is
           # immutable, and the version-tags ruleset enforces that: its `v*.*.*`
