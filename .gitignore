@@ -1,0 +1,4 @@
+# Written into the checkout by the pixi fixture's environment, and by local direnv use.
+# The stub-directives test job asserts a clean working tree, so these must be ignored.
+.direnv/
+.pixi/

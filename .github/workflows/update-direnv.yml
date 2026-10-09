@@ -1,0 +1,135 @@
+name: Update direnv
+
+# Maintains the direnv version pinned in the setup-direnv composite action. Dependabot
+# can't track a version pinned in a shell script, and wouldn't refresh the embedded
+# checksums anyway. This job does both, then opens a PR that goes through the normal
+# tests-pass + SonarCloud gates and branch rules before merge.
+#
+# Internal machinery: it lives under .github/workflows/, which is never published, so a
+# consumer of @v1 never fetches or runs it. What it *edits* is published, which is what
+# decides its commit prefix below.
+#
+# direnv publishes no checksums.txt, so this job downloads both release binaries and
+# hashes them itself - which is where the sums in install-direnv.sh come from.
+#
+# The PR is `deps:`, not `ci:`: this direnv is installed on *consumers'* runners by a
+# published action, so bumping it changes what they execute and must cut a patch release
+# and appear in the changelog (see CONTRIBUTING.md, "`deps:` vs `ci:`"). As `ci:` it would
+# be hidden and non-releasable, so consumers on @v1 would receive the new binary on the
+# next unrelated feat/fix with nothing in the notes explaining it.
+#
+# Authenticates as the tomborglum-actions-bot GitHub App (Contents: read/write and Pull
+# requests: read/write) rather than with GITHUB_TOKEN, because events created by
+# GITHUB_TOKEN do not trigger further workflow runs and the PR would never run the
+# required status checks. App installation tokens have no such restriction.
+
+on:
+  schedule:
+    - cron: '0 6 * * 2' # Tuesdays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          # client-id, not the deprecated app-id. These are different values:
+          # AUTOMATION_APP_CLIENT_ID holds the App's *Client ID* (App settings ->
+          # General -> Client ID), not the numeric App ID.
+          client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Check for a newer direnv release
+        id: check
+        env:
+          # The app token is scoped to this repo, so it cannot read direnv/direnv.
+          # The built-in token reads any public repo.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          script="setup-direnv/install-direnv.sh"
+
+          current="$(grep -oP '^VERSION=\K.*' "$script")"
+          latest="$(gh api repos/direnv/direnv/releases/latest --jq '.tag_name' | sed 's/^v//')"
+          echo "current=$current  latest=$latest"
+
+          if [[ "$current" == "$latest" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already on the latest version; nothing to do."
+            exit 0
+          fi
+
+          # No vendor checksums.txt to read, so hash the assets themselves. curl -f makes
+          # a missing asset (an arch dropped upstream) a failure rather than a bad sum.
+          for a in amd64 arm64; do
+            curl -fsSL --proto '=https' --tlsv1.2 \
+              "https://github.com/direnv/direnv/releases/download/v${latest}/direnv.linux-${a}" \
+              -o "/tmp/direnv.${a}"
+          done
+          x86="$(sha256sum /tmp/direnv.amd64 | cut -d' ' -f1)"
+          arm="$(sha256sum /tmp/direnv.arm64 | cut -d' ' -f1)"
+          if [[ -z "$x86" || -z "$arm" ]]; then
+            echo "Could not compute Linux amd64/arm64 checksums for v${latest}" >&2
+            exit 1
+          fi
+
+          # Address each line by its ARCH marker so spacing/order can't break the edit.
+          sed -i \
+            -e "s/^VERSION=.*/VERSION=${latest}/" \
+            -e "/ARCH=amd64/ s/SHA256=[0-9a-f]\{64\}/SHA256=${x86}/" \
+            -e "/ARCH=arm64/ s/SHA256=[0-9a-f]\{64\}/SHA256=${arm}/" \
+            "$script"
+
+          bash -n "$script"
+          rm -f /tmp/direnv.amd64 /tmp/direnv.arm64
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve the bot's commit identity
+        id: bot
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          # create-github-app-token exposes the slug but not the numeric user id,
+          # which the noreply address needs.
+          id="$(gh api "/users/${SLUG}[bot]" --jq .id)"
+          echo "name=${SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=${id}+${SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          committer: ${{ steps.bot.outputs.name }} <${{ steps.bot.outputs.email }}>
+          author: ${{ steps.bot.outputs.name }} <${{ steps.bot.outputs.email }}>
+          branch: deps/bump-direnv
+          delete-branch: true
+          base: main
+          commit-message: "deps: bump direnv to v${{ steps.check.outputs.latest }}"
+          title: "deps: bump direnv to v${{ steps.check.outputs.latest }}"
+          body: |
+            Automated update of the direnv used by the `setup-direnv` action to
+            **v${{ steps.check.outputs.latest }}**.
+
+            `VERSION` and both per-arch `SHA256` values in
+            `setup-direnv/install-direnv.sh` were refreshed by hashing the release
+            binaries (direnv ships no `checksums.txt`). The setup-direnv test workflow
+            runs on every pull request, so the new version is exercised end to end -
+            `install-arm64` is the only job anywhere that verifies the `arm64` sum.
+            `tests-pass` and the SonarCloud gate must both be green before merge.
+
+            Merging this cuts a patch release, which is how the new direnv reaches
+            consumers pinned to `@v1`.
