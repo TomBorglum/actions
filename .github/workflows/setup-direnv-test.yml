@@ -1,0 +1,307 @@
+name: setup-direnv test
+
+# Exercises the setup-direnv composite action end to end: that it installs a runtime
+# declared in an .envrc and exposes it to *subsequent* steps (proving the $GITHUB_PATH /
+# $GITHUB_ENV export, not just a transient direnv shell), that a name set by a stock
+# directive travels just as far as one set by a use_* directive, that an undefined
+# directive is an error rather than a silent no-op, that stub-directives neutralises one
+# without exporting anything or accepting an injected name, and that the action fails when
+# there is no .envrc to act on.
+#
+# Deliberately NOT path-filtered. These tests gate the merge via the tests-pass job
+# below, and a path-filtered workflow cannot do that: when the filter excludes a PR its
+# checks stay Pending rather than passing, so a required check over a filtered workflow
+# deadlocks the pull request permanently. Running always is cheap because the action's own
+# actions/cache step keys on the fixture .envrc, which never changes - after the first run
+# every toolchain dir is an exact-key hit and each directive's install guard skips its
+# download.
+#
+# No secrets are used anywhere here, so a fork pull request running this at
+# contents: read can reach nothing.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  activate-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run setup-direnv against the sdk fixture
+        uses: ./setup-direnv
+        with:
+          working-directory: setup-direnv/test/fixture-sdk
+
+      - name: Assert the runtime propagated to later steps
+        run: |
+          set -euo pipefail
+          # Each SDKMAN candidate exposes its bin on PATH and its <CANDIDATE>_HOME
+          # (SDKMAN's convention), pinned to the version the .envrc declares.
+          #
+          # The exact paths matter: sdkman-init.sh sets <CANDIDATE>_HOME to the floating
+          # candidates/<c>/current symlink, and use_sdk overwrites it with the declared
+          # version. Reading .../java/current here would mean that overwrite was lost.
+          echo "JAVA_HOME=${JAVA_HOME:-<unset>}  MAVEN_HOME=${MAVEN_HOME:-<unset>}"
+          test "${JAVA_HOME:-}"  = "$HOME/.sdkman/candidates/java/21.0.2-tem"
+          test "${MAVEN_HOME:-}" = "$HOME/.sdkman/candidates/maven/3.9.9"
+          java -version
+          command -v java | grep -q "$HOME/.sdkman/candidates/java/"
+          mvn -version
+          command -v mvn | grep -q "$HOME/.sdkman/candidates/maven/"
+
+  activate-fnm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run setup-direnv against the fnm fixture
+        uses: ./setup-direnv
+        with:
+          working-directory: setup-direnv/test/fixture-fnm
+
+      - name: Assert the runtime propagated to later steps
+        run: |
+          set -euo pipefail
+          # fnm exposes the node bin on PATH, pinned to the version the .envrc declares.
+          # Resolving node here (a later step) proves the $GITHUB_PATH export, not just a
+          # transient direnv shell.
+          node --version
+          test "$(node --version)" = "v22.14.0"
+          command -v node | grep -q "$HOME/.fnm/node-versions/v22.14.0/"
+
+  activate-pixi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run setup-direnv against the pixi fixture
+        uses: ./setup-direnv
+        with:
+          working-directory: setup-direnv/test/fixture-pixi
+
+      - name: Assert the runtime propagated to later steps
+        run: |
+          set -euo pipefail
+          # pixi exposes the workspace's default-env bin on PATH. Resolving python
+          # here (a later step) to that env proves the $GITHUB_PATH export, not just
+          # a transient direnv shell. pixi itself is also exposed from ~/.pixi/bin.
+          pixi --version
+          command -v pixi | grep -q "$HOME/.pixi/bin/"
+          python --version
+          command -v python | grep -q "/setup-direnv/test/fixture-pixi/.pixi/envs/default/bin/"
+
+  activate-dotenv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run setup-direnv against the dotenv fixture
+        uses: ./setup-direnv
+        with:
+          working-directory: setup-direnv/test/fixture-dotenv
+
+      - name: Assert the stock directives propagated to later steps
+        run: |
+          set -euo pipefail
+          # The only fixture with no use_* directive: it uses stock `export` and
+          # `dotenv_if_exists`, which put names in direnv's environment and write to
+          # neither $GITHUB_PATH nor $GITHUB_ENV themselves. Reading them here, in a
+          # later step, is the whole point - nothing but the action's own export can
+          # have carried them.
+          echo "PLAIN=${SETUP_DIRENV_PLAIN:-<unset>}  DOTENV=${SETUP_DIRENV_DOTENV:-<unset>}"
+          test "${SETUP_DIRENV_PLAIN:-}"  = "from-envrc"
+          test "${SETUP_DIRENV_DOTENV:-}" = "from-dotenv"
+          test "${SETUP_DIRENV_TRICKY:-}" = "a=b c"
+
+          # What the heredoc delimiter is for, and the only assertion here that a plain
+          # "key=value" append would fail. The value spans three lines and its middle
+          # line is itself shaped like an assignment, so writing it unquoted would end
+          # SETUP_DIRENV_MULTI after "first line" and hand the runner the next line as a
+          # variable of its own.
+          printf 'MULTI=[%s]\n' "${SETUP_DIRENV_MULTI:-<unset>}"
+          test "${SETUP_DIRENV_MULTI:-}" = $'first line\nSETUP_DIRENV_FORGED=nope\nlast line'
+          test -z "${SETUP_DIRENV_FORGED:-}"
+          # direnv's own bookkeeping is not job state, and must not have been carried.
+          test -z "${DIRENV_DIFF:-}"
+          test -z "${DIRENV_FILE:-}"
+
+  # The stub-directives input, which replaced the two hardcoded no-op directives
+  # (use_sonarqube_mcp, use_claude_env) this action carried when it lived in
+  # wsl-cloud-init. The fixture declares both, with and without arguments.
+  stub-directives:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run setup-direnv against the stub fixture
+        uses: ./setup-direnv
+        with:
+          working-directory: setup-direnv/test/fixture-stub
+          stub-directives: sonarqube_mcp claude_env
+
+      - name: Assert the stubs exported nothing
+        run: |
+          set -euo pipefail
+          # A stub must succeed and contribute nothing. These names are what the real
+          # workstation directives would have set, so finding either here would mean a
+          # stub had grown an effect.
+          echo "SONARQUBE_TOKEN=${SONARQUBE_TOKEN:-<unset>}  SONARQUBE_ORG=${SONARQUBE_ORG:-<unset>}"
+          test -z "${SONARQUBE_TOKEN:-}"
+          test -z "${SONARQUBE_ORG:-}"
+
+      - name: Assert the stubs wrote nothing into the checkout
+        run: |
+          set -euo pipefail
+          # Inherited from the old activate-claude-env job, which existed because the
+          # workstation use_claude_env writes a .claude/settings.json. A file appearing
+          # here would dirty the tree for later steps in a consumer's job.
+          git status --porcelain --untracked-files=all > /tmp/stub-status
+          if [[ -s /tmp/stub-status ]]; then
+            echo "a stubbed directive modified the checkout:" >&2
+            cat /tmp/stub-status >&2
+            exit 1
+          fi
+
+  # The negative twin of the job above, and the test for the strict `use` override.
+  # direnv's own stdlib `use` calls use_<name> with no check, so an undefined directive is
+  # a "command not found" it does not treat as fatal - left alone, this fixture would pass
+  # with nothing installed. That is what the override turns into an error, and it is what
+  # makes stub-directives mean something: this job fails if the strictness is ever lost.
+  stub-directives-omitted:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run setup-direnv against the stub fixture with no stub-directives
+        id: run
+        continue-on-error: true
+        uses: ./setup-direnv
+        with:
+          working-directory: setup-direnv/test/fixture-stub
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected an undefined directive to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
+
+  # stub-directives reaches a generated function definition, so the action constrains
+  # each name to a bare identifier. This asserts the rejection *and* that nothing ran -
+  # a validation that failed after the fact would still have executed the payload.
+  stub-directives-rejected:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run setup-direnv with an injected stub name
+        id: run
+        continue-on-error: true
+        uses: ./setup-direnv
+        with:
+          working-directory: setup-direnv/test/fixture-stub
+          stub-directives: 'foo; touch /tmp/pwned'
+
+      - name: Assert the name was rejected and nothing executed
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected an invalid stub name to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
+          if [[ -e /tmp/pwned ]]; then
+            echo "the injected command executed despite the step failing" >&2
+            exit 1
+          fi
+
+  # The only arm64 job, and the only thing that exercises install-direnv.sh's aarch64
+  # branch - its pinned checksum would otherwise never be verified by anything, on the
+  # deps: bump PR least of all. It reuses the dotenv fixture deliberately: proving the
+  # install and the export is the point here, and no use_* directive means no toolchain
+  # download to go flaky on a less-used runner image.
+  install-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run setup-direnv against the dotenv fixture
+        uses: ./setup-direnv
+        with:
+          working-directory: setup-direnv/test/fixture-dotenv
+
+      - name: Assert the arm64 direnv installed and exported
+        run: |
+          set -euo pipefail
+          # Pinned, so assert the version: a silent drift back to whatever the runner
+          # image carries is what this catches.
+          direnv version | grep -qx "$(grep -oP '^VERSION=\K.*' setup-direnv/install-direnv.sh)"
+          command -v direnv | grep -qx /usr/local/bin/direnv
+          test "${SETUP_DIRENV_PLAIN:-}"  = "from-envrc"
+          test "${SETUP_DIRENV_DOTENV:-}" = "from-dotenv"
+
+  missing-envrc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Point at a directory that has no .envrc (.github is never a direnv root).
+      - name: Run setup-direnv where there is no .envrc
+        id: run
+        continue-on-error: true
+        uses: ./setup-direnv
+        with:
+          working-directory: .github
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected setup-direnv to fail on a missing .envrc, got: $OUTCOME" >&2
+            exit 1
+          fi
+
+  # The required status check, and the only job name the main-protection ruleset needs
+  # to know. Listing all nine above would be nine entries to keep in sync, and a renamed
+  # job would quietly stop gating; this aggregate fails closed instead.
+  #
+  # ANY JOB ADDED ABOVE MUST BE ADDED TO needs: - a job left out runs but gates nothing.
+  #
+  # `if: always()` is load-bearing: without it this job is skipped when an upstream job
+  # fails, and a skipped job reports Success, so the gate would pass precisely when it
+  # should not.
+  tests-pass:
+    if: always()
+    needs:
+      - activate-sdk
+      - activate-fnm
+      - activate-pixi
+      - activate-dotenv
+      - stub-directives
+      - stub-directives-omitted
+      - stub-directives-rejected
+      - install-arm64
+      - missing-envrc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every job succeeded
+        env:
+          FAILED: ${{ contains(needs.*.result, 'failure') }}
+          CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
+        run: |
+          set -euo pipefail
+          if [[ "$FAILED" != "false" || "$CANCELLED" != "false" ]]; then
+            echo "setup-direnv tests did not all pass (failure=$FAILED cancelled=$CANCELLED)" >&2
+            exit 1
+          fi

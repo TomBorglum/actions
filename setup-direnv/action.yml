@@ -1,0 +1,176 @@
+name: setup-direnv
+description: >-
+  Install direnv and evaluate a repository's .envrc, exporting the language
+  runtimes it declares and every variable it sets to $GITHUB_PATH / $GITHUB_ENV
+  for later workflow steps.
+
+# Metadata only. No Marketplace listing is published, and none could be: a listing
+# requires action.yml at the repository root, which every action here deliberately
+# avoids (see CONTRIBUTING.md, "Never put an action.yml at the repository root").
+branding:
+  icon: terminal
+  color: purple
+
+inputs:
+  working-directory:
+    description: Directory containing the .envrc to activate.
+    required: false
+    default: '.'
+  cache:
+    description: >-
+      Cache the language toolchain dirs (~/.sdkman, ~/.fnm, ~/.pixi) across runs,
+      keyed on the .envrc. Set to 'false' to disable.
+    required: false
+    default: 'true'
+  stub-directives:
+    description: >-
+      Whitespace-separated directive names to define as no-ops. This action rejects an
+      .envrc that uses a directive it does not define, so naming one here is how an
+      .envrc declaring something meaningful only on a workstation still evaluates on a
+      runner. Arguments are accepted and ignored, nothing is exported, and a stub
+      shadows a built-in directive of the same name.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # Install direnv from its GitHub release rather than the runner's apt repos, so the
+    # version is pinned here instead of floating with the runner image (which can differ
+    # between ubuntu-latest and its arm variant, and change under a green run). direnv
+    # publishes no vendor checksum file, so the script carries sums we recorded
+    # ourselves; update-direnv.yml refreshes both them and the version by PR.
+    #
+    # Run through `bash` because the script is mode 644, like every other script here.
+    - name: Install direnv
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/install-direnv.sh"
+
+    # Restore the toolchain dirs before activation, keyed on the .envrc so a change
+    # to a declared version invalidates the cache. One entry, directive-agnostic: the
+    # path lists every tool dir a directive might populate, and actions/cache skips a
+    # path that does not exist (an fnm-only .envrc caches only ~/.fnm, etc.).
+    # actions/cache registers a post-step that saves at job end (skipped on an
+    # exact-key hit). On a full hit, each directive's idempotency (its install-dir
+    # guard) skips every download.
+    #
+    # stub-directives is deliberately absent from the key: a stub installs nothing, so
+    # it cannot change what any of these directories hold.
+    #
+    # No restore-keys on purpose: a broad prefix fallback would base-restore the prior
+    # .envrc's toolchains on every version change, so old ones would accrete and the
+    # cache would grow without bound. With an exact key only, an unchanged .envrc is a
+    # full hit (no downloads), a version change starts a lean fresh cache, and the
+    # superseded entry auto-evicts after 7 days idle.
+    - name: Cache toolchains
+      if: ${{ inputs.cache == 'true' }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.sdkman
+          ~/.fnm
+          ~/.pixi
+        # hashFiles globs relative to GITHUB_WORKSPACE; with working-directory '.' the
+        # key ends in '/.envrc', which resolves. It is empty when there is no .envrc
+        # (that path fails activation anyway), which is a harmless constant key.
+        key: setup-direnv-toolchains-${{ runner.os }}-${{ hashFiles(format('{0}/.envrc', inputs.working-directory)) }}
+
+    # Activate the .envrc: install the CI direnv directives, fail if there is no
+    # .envrc, then evaluate it. Evaluating it runs each use_* directive, which installs
+    # the declared runtime and puts it on $GITHUB_PATH for later steps.
+    #
+    # Then hand the whole resulting environment downstream. A directive leaves the
+    # environment correct and the copy below forwards it, so nothing needs to know
+    # about $GITHUB_ENV - and stock direnv (export, dotenv, dotenv_if_exists) travels
+    # just as far, where before it died with this step because `direnv exec` runs in a
+    # subshell.
+    #
+    # Three things are held back. DIRENV_* is direnv's own bookkeeping (the diff it
+    # uses to reverse a load) and is meaningless to a step that is not running direnv.
+    # A null value means direnv is UNsetting the name, which $GITHUB_ENV cannot
+    # express. PATH belongs to $GITHUB_PATH, which the directives append to: setting a
+    # whole PATH through $GITHUB_ENV is discouraged by GitHub and would freeze later
+    # steps to this step's copy, undoing anything a subsequent action adds.
+    #
+    # The heredoc form, with a random delimiter, is what makes a value containing a
+    # newline or an '=' safe - and what stops a crafted value forging entries of its
+    # own.
+    #
+    # STUB_DIRECTIVES comes through env: rather than an inline ${{ }} because a
+    # composite action does not expose its inputs to run: steps as INPUT_* variables
+    # the way a JavaScript action's runtime does, and because an interpolated input is
+    # the script-injection vector SECURITY.md names.
+    - name: Activate .envrc
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        STUB_DIRECTIVES: ${{ inputs.stub-directives }}
+      run: |
+        set -euo pipefail
+        if [[ ! -f .envrc ]]; then
+          echo "setup-direnv: no .envrc in $(pwd)" >&2
+          exit 1
+        fi
+        install -d "$HOME/.config/direnv/lib"
+        install -m 644 "$GITHUB_ACTION_PATH"/lib/*.sh "$HOME/.config/direnv/lib/"
+
+        # Everything this action adds on top of its own directives goes in one generated
+        # file. The zz- prefix is load-bearing: direnv sources ~/.config/direnv/lib/*.sh
+        # in glob order, so this lands after fnm.sh/pixi.sh/sdk.sh and can therefore
+        # override direnv's own `use` - and a stub below wins over a built-in directive
+        # of the same name.
+        lib="$HOME/.config/direnv/lib/zz-setup-direnv.sh"
+
+        # direnv's stdlib `use` invokes use_<name> with no check of its own, so an
+        # undefined directive is a bash "command not found" that direnv does not treat
+        # as fatal: the step would succeed with nothing installed. A typo'd
+        # `use fmn node 22`, or a lib file that failed to install, has to be an error
+        # rather than a silent no-op - that is the same silent-success failure the
+        # directives' `exit 1`-not-`return 1` convention exists to prevent.
+        #
+        # `exit`, not `return`, for exactly that reason: direnv ignores a non-zero return
+        # from a directive, whereas a non-zero exit from the .envrc propagates and fails
+        # this step.
+        cat > "$lib" <<'STRICT'
+        use() {
+          local cmd=$1
+          if ! declare -F "use_$cmd" >/dev/null 2>&1; then
+            echo "setup-direnv: no such directive 'use $cmd'. Name it in the action's stub-directives input to ignore it." >&2
+            exit 1
+          fi
+          log_status "using $*"
+          shift
+          "use_$cmd" "$@"
+        }
+        STRICT
+
+        # Then a no-op use_<name> per requested directive, which is how an .envrc
+        # declaring something meaningful only on a workstation still evaluates here
+        # despite the strictness above. Arguments are accepted and ignored; the line on
+        # stderr is what keeps a stubbed run distinguishable from one that did work.
+        #
+        # The name reaches a function definition, so validate it to a bare identifier and
+        # fail otherwise - the function body itself is static. The unquoted expansion is
+        # deliberate word-splitting; every word it yields is then checked.
+        for name in $STUB_DIRECTIVES; do
+          if [[ ! "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            echo "setup-direnv: invalid stub-directives entry '$name'" >&2
+            exit 1
+          fi
+          printf 'use_%s() {\n  echo "setup-direnv: '\''use %s $*'\'' stubbed as a no-op" >&2\n  return 0\n}\n' \
+            "$name" "$name" >> "$lib"
+        done
+        chmod 644 "$lib"
+
+        direnv allow
+        direnv exec . true
+
+        delimiter="SETUP_DIRENV_EOF_$(openssl rand -hex 16)"
+        direnv export json \
+          | jq -r --arg d "$delimiter" '
+              to_entries[]
+              | select(.value != null)
+              | select(.key | test("^(DIRENV_|PATH$)") | not)
+              | "\(.key)<<\($d)\n\(.value)\n\($d)"
+            ' \
+          >> "$GITHUB_ENV"

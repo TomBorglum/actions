@@ -19,7 +19,7 @@ jobs:
 
 | Action | Purpose |
 | --- | --- |
-| _none yet_ | The first action lands as a `feat:` PR — see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-new-action). |
+| [`setup-direnv`](setup-direnv/) | Install direnv and evaluate a repository's `.envrc`, exporting the language runtimes and variables it declares to later workflow steps. |
 
 ## Versioning and pinning
 
@@ -47,8 +47,12 @@ See the [changelog](CHANGELOG.md) for what each release contained, and
 ## Guardrails
 
 `main` is protected by a repository ruleset: pull requests only, linear history, no
-force-pushes or deletions, and a required SonarCloud check — with no bypass actors,
-including for maintainers. Version tags have their own ruleset making them immutable.
+force-pushes or deletions, and required SonarCloud and per-action test checks — with no
+bypass actors, including for maintainers. Version tags have their own ruleset making them
+immutable.
+
+Each action's tests gate its own merges. They run on every pull request and report through
+a single `tests-pass` check per action, so a red test cannot be merged around.
 
 Every third-party action used here, in a workflow or inside a published `action.yml`,
 is pinned to a full commit SHA; Dependabot keeps those pins fresh, with a cooldown on

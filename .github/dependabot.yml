@@ -21,28 +21,31 @@ updates:
         patterns:
           - "*"
 
-  # When the first action lands, add a second entry in the SAME pull request, prefixed
-  # "deps". Actions referenced inside a published action.yml run on *consumers'*
-  # runners, so bumping one changes what they execute and must cut a patch release.
-  # Dependabot only fetches a directory's own action.yml, so each action needs listing
-  # - `directories` accepts globs, so "/setup-*" collapses several.
+  # Consumer-facing actions: the ones referenced inside a published action.yml. These run
+  # on *consumers'* runners, so bumping one changes what they execute and must cut a patch
+  # release - hence "deps", not "ci". Dependabot only fetches a directory's own
+  # action.yml, so each action needs listing; `directories` accepts globs, so "/setup-*"
+  # would collapse several once there is more than one.
   #
   # The cooldown is the difference that matters: a "deps" bump republishes to other
   # people's workflows, so leave upstream time to withdraw a bad or compromised
   # release before it ships onward. The "ci" entry above needs none - a bad bump there
   # breaks only this repo's CI, and sooner is better for a security fix.
   #
-  # - package-ecosystem: "github-actions"
-  #   directories: ["/setup-direnv"]
-  #   schedule:
-  #     interval: "weekly"
-  #   commit-message:
-  #     prefix: "deps"
-  #   groups:
-  #     actions:
-  #       patterns:
-  #         - "*"
-  #   cooldown:
-  #     semver-major-days: 30
-  #     semver-minor-days: 7
-  #     semver-patch-days: 3
+  # The direnv version pinned in setup-direnv/install-direnv.sh is NOT covered here -
+  # Dependabot cannot track a version in a shell script. update-direnv.yml does that,
+  # and opens its PR with the same "deps" prefix for the same reason.
+  - package-ecosystem: "github-actions"
+    directories: ["/setup-direnv"]
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3

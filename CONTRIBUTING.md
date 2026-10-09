@@ -185,14 +185,25 @@ Each action lives in its own top-level directory and is consumed as
 
 - `<name>/action.yml`, with every third-party `uses:` pinned by SHA.
 - A test workflow, `.github/workflows/<name>-test.yml`, that exercises the action
-  end to end and is triggered on `pull_request` with a `paths:` filter for the
-  action's directory. Test what would actually break a consumer — in particular that
-  anything the action exports via `$GITHUB_PATH` or `$GITHUB_ENV` is visible to
-  *subsequent* steps, not just inside the action.
+  end to end on `pull_request`. Test what would actually break a consumer — in
+  particular that anything the action exports via `$GITHUB_PATH` or `$GITHUB_ENV` is
+  visible to *subsequent* steps, not just inside the action.
+- A `tests-pass` job in that workflow, with `if: always()` and `needs:` listing every
+  other job, failing if any of them failed or was cancelled. **Add it to the
+  `main-protection` ruleset's required status checks**, which is a repository-settings
+  change and not part of the PR. Every job added to the workflow later must be added to
+  `needs:` too — a job left out runs but gates nothing.
 - A `deps:`-prefixed Dependabot entry for the new directory in
-  [`.github/dependabot.yml`](.github/dependabot.yml) (the file has a commented
-  template). Forgetting this means the action's pins silently stop being updated.
-- A row in the action index in [`README.md`](README.md).
+  [`.github/dependabot.yml`](.github/dependabot.yml). Forgetting this means the action's
+  pins silently stop being updated.
+- A row in the action index in [`README.md`](README.md), and a `<name>/README.md`
+  documenting its inputs.
+
+**Do not add a `paths:` filter to a test workflow.** A path-filtered workflow cannot gate
+a merge: when the filter excludes a pull request its checks stay *Pending* rather than
+passing, so a required check over a filtered workflow blocks that PR forever. Let the
+workflow run on every pull request, or gate the heavy jobs with `if:` on a cheap
+changed-files job — a *skipped* job reports Success and does not block.
 
 Title the PR `feat: add <name> action` — a new action is a feature, and a minor bump
 is what moves the `v1` tag to include it.

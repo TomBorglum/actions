@@ -1,0 +1,5 @@
+# `use_pixi` runs `pixi install` in the workspace it activates, so the pixi fixture
+# materialises an environment inside the checkout. Nothing here creates a .direnv/ -
+# direnv only does that for layout-style directives (layout python, use nix, or an
+# explicit direnv_layout_dir), and none of the directives in setup-direnv/lib use one.
+setup-direnv/test/fixture-pixi/.pixi/
