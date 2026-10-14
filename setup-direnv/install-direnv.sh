@@ -18,13 +18,13 @@ fi
 # with the runner image, which differs between ubuntu-latest and its arm variant - and
 # verifying an embedded hash means a tampered release artifact is rejected even when
 # the download itself succeeds.
-VERSION=2.37.1
+VERSION=2.38.2
 
 # uname -m rather than dpkg --print-architecture: no dpkg dependency, and direnv names
 # its assets by the arch this maps to.
 case "$(uname -m)" in
-  x86_64)  ARCH=amd64; SHA256=1f1b93dd6f38523fde26dfac96151ef9d31a374e3005cd3345fb93555ae0c9b5 ;;
-  aarch64) ARCH=arm64; SHA256=2a9cef8d73521d6a3ec3f2871c4b747b8c4cc038628c1b57a7efa42b393a2d82 ;;
+  x86_64)  ARCH=amd64; SHA256=148820a187930d36ca6a204504e5cdb30d8396cd1a97e64c3b3f10d793c11247 ;;
+  aarch64) ARCH=arm64; SHA256=ec2a32dbe2f19dd085bd9315a1b4ea88b55ec288aa7eabe8723490baf466cb23 ;;
   *) echo "Unsupported architecture for direnv: $(uname -m)" >&2; exit 1 ;;
 esac
 
