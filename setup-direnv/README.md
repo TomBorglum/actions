@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: TomBorglum/actions/setup-direnv@v1
+      - uses: TomBorglum/actions/setup-direnv@v2
         with:
           working-directory: .
 
@@ -25,7 +25,7 @@ jobs:
       - run: mvn verify
 ```
 
-See the [repository README](../README.md#versioning-and-pinning) for what `@v1` means and
+See the [repository README](../README.md#versioning-and-pinning) for what `@v2` means and
 when to pin more tightly.
 
 ## Inputs
@@ -46,7 +46,7 @@ leave later steps running against whatever the runner image happened to provide.
 | --- | --- | --- |
 | `use sdk <candidate> <version>` | SDKMAN, then the candidate | the candidate's `bin` on `PATH`, plus SDKMAN's `<CANDIDATE>_HOME` (`JAVA_HOME`, `MAVEN_HOME`, …) |
 | `use fnm node <version>` | fnm, then Node | the resolved Node `bin` on `PATH` |
-| `use pixi` | pixi, then the workspace's environment | the environment's `bin` and pixi's own `bin` on `PATH` |
+| `use pixi <version> [template]` | pixi at the pinned version, then the workspace's environment | the environment's `bin` and pixi's own `bin` on `PATH` |
 
 `use_sdk` is **generic over its arguments**: it passes `<candidate> <version>` straight to
 SDKMAN and derives `<CANDIDATE>_HOME` as `${candidate^^}_HOME`. So `use sdk gradle 8.7`,
@@ -55,8 +55,27 @@ SDKMAN and derives `<CANDIDATE>_HOME` as `${candidate^^}_HOME`. So `use sdk grad
 `use fnm node <version>` requires an **exact** release. A partial like `22` resolves to the
 latest matching version and would drift silently, so it is rejected.
 
-`use pixi` does not scaffold a manifest. CI activates a workspace the repository already
-commits, so a missing `pixi.toml` is a hard error.
+`use pixi <version>` has no equivalent format rule, and the difference is deliberate rather
+than an oversight: `fnm install 22` *succeeds* and quietly resolves to some other release,
+which is what fnm's check exists to catch, whereas pixi's installer resolves the version to
+a release tag — so a partial like `0.81` is not a tag, fails the download, and is reported.
+The version string is passed through to the installer, which accepts `0.81.0` and `v0.81.0`
+alike. What **is** required is that a version be given at all: with none, the installer
+would fall back to whatever is latest that day, so an unversioned `use pixi` fails the step.
+
+The `[template]` argument is **accepted and ignored**. On a workstation it scaffolds a
+`pixi.toml` from a named template, but CI activates a workspace the repository already
+commits, so there is nothing here for it to do — ignoring it is what lets one `.envrc`
+serve a workstation and a runner alike. For the same reason `use pixi` does not scaffold a
+manifest: a missing `pixi.toml` is a hard error.
+
+A committed `pixi.lock` is **verified, not updated**. The directive installs with
+`--locked` when a lockfile is present (and a plain `pixi install` when there is none), so a
+lockfile that has drifted from `pixi.toml` fails the step instead of being silently
+rewritten — CI would otherwise run against dependencies that are not the committed ones.
+A workspace that also declares [`requires-pixi`](https://pixi.prefix.dev/latest/reference/pixi_manifest/)
+composes with this for free: if the version the `.envrc` pins does not satisfy it, pixi
+itself refuses, so this action needs no code for it.
 
 ## How the environment reaches later steps
 
@@ -112,7 +131,7 @@ configures an editor integration, or writes a local settings file. Naming them i
 rejected by the strictness above:
 
 ```yaml
-      - uses: TomBorglum/actions/setup-direnv@v1
+      - uses: TomBorglum/actions/setup-direnv@v2
         with:
           stub-directives: sonarqube_mcp claude_env
 ```
@@ -150,7 +169,7 @@ Reached only by the directives a given `.envrc` actually uses, always over HTTPS
 | `github.com/direnv/direnv/releases` | always (the direnv install) |
 | `get.sdkman.io` and SDKMAN's own hosts | `use sdk` |
 | `fnm.vercel.app` | `use fnm` |
-| `pixi.sh` | `use pixi` |
+| `pixi.sh` | `use pixi <version>` |
 
 ## Tests
 
