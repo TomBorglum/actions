@@ -20,6 +20,7 @@ jobs:
 | Action | Purpose |
 | --- | --- |
 | [`setup-direnv`](setup-direnv/) | Install direnv and evaluate a repository's `.envrc`, exporting the language runtimes and variables it declares to later workflow steps. |
+| [`check-pixi-manifest`](check-pixi-manifest/) | Fail unless a `pixi.toml` is present in a directory. A `pyproject.toml` carrying `[tool.pixi.*]` is deliberately refused. |
 
 ## Versioning and pinning
 

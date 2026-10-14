@@ -1,0 +1,117 @@
+name: check-pixi-manifest test
+
+# Exercises the check-pixi-manifest action: that it accepts a directory holding a
+# pixi.toml, that it refuses one holding neither manifest, and that it refuses a
+# pyproject.toml carrying a [tool.pixi.*] table - the last being a deliberate policy
+# choice rather than an oversight, since pixi itself would accept that repository.
+#
+# The two refusal cases use a step-level continue-on-error and assert on steps.*.outcome.
+# That is the whole reason this check is an action: the reusable workflow that consumes it
+# (TomBorglum/workflows, pixi-upgrade.yml) must hard-fail without a pixi.toml, and a
+# failure inside a called workflow cannot be caught by its caller - GitHub permits no
+# continue-on-error on a job that calls a reusable workflow. Here the real refusal runs
+# and is asserted, with every job green.
+#
+# Deliberately NOT path-filtered. These tests gate the merge via the tests-pass job
+# below, and a path-filtered workflow cannot do that: when the filter excludes a PR its
+# checks stay Pending rather than passing, so a required check over a filtered workflow
+# deadlocks the pull request permanently.
+#
+# No secrets are used anywhere here, so a fork pull request running this at
+# contents: read can reach nothing.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  manifest-present:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run check-pixi-manifest against a directory holding a pixi.toml
+        uses: ./check-pixi-manifest
+        with:
+          working-directory: check-pixi-manifest/test/fixture-manifest
+
+  manifest-missing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run check-pixi-manifest against a directory holding no manifest
+        id: run
+        continue-on-error: true
+        uses: ./check-pixi-manifest
+        with:
+          working-directory: check-pixi-manifest/test/fixture-empty
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected a missing pixi.toml to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
+
+  # The policy case. pixi resolves a pyproject.toml carrying [tool.pixi.workspace] as a
+  # manifest when no pixi.toml exists, so without this assertion a refactor that started
+  # accepting it would look like a feature rather than a regression.
+  pyproject-rejected:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run check-pixi-manifest against a pyproject.toml pixi workspace
+        id: run
+        continue-on-error: true
+        uses: ./check-pixi-manifest
+        with:
+          working-directory: check-pixi-manifest/test/fixture-pyproject
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected a pyproject.toml-only pixi workspace to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
+
+  # One aggregate gate, so the ruleset needs a single check name rather than one per job.
+  #
+  # ANY JOB ADDED ABOVE MUST BE ADDED TO needs: - a job left out runs but gates nothing.
+  #
+  # `if: always()` is load-bearing: without it this job is skipped when an upstream job
+  # fails, and a skipped job reports Success, so the gate would pass precisely when it
+  # should not.
+  # Named explicitly, because a check run takes its name from the job's `name:` and
+  # falls back to the job id. setup-direnv-test.yml already contributes a bare
+  # `tests-pass` job, and two check runs sharing one name cannot be told apart by a
+  # ruleset's required-checks list - so each action's gate needs a distinct name.
+  tests-pass:
+    name: check-pixi-manifest tests pass
+    if: always()
+    needs:
+      - manifest-present
+      - manifest-missing
+      - pyproject-rejected
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every job succeeded
+        env:
+          FAILED: ${{ contains(needs.*.result, 'failure') }}
+          CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
+        run: |
+          set -euo pipefail
+          if [[ "$FAILED" != "false" || "$CANCELLED" != "false" ]]; then
+            echo "check-pixi-manifest tests did not all pass (failure=$FAILED cancelled=$CANCELLED)" >&2
+            exit 1
+          fi

@@ -1,0 +1,53 @@
+name: check-pixi-manifest
+description: >-
+  Fail unless a pixi.toml is present in the given directory. A pyproject.toml carrying
+  a [tool.pixi.*] table is deliberately not accepted, and is reported as such.
+
+# Metadata only. No Marketplace listing is published, and none could be: a listing
+# requires action.yml at the repository root, which every action here deliberately
+# avoids (see CONTRIBUTING.md, "Never put an action.yml at the repository root").
+branding:
+  icon: check-circle
+  color: yellow
+
+inputs:
+  working-directory:
+    description: Directory that must contain the pixi.toml.
+    required: false
+    default: '.'
+
+runs:
+  using: composite
+  steps:
+    # Why an action rather than three lines inline in the workflow that needs it: the
+    # workflow that needs it is a *reusable* workflow, whose actions/checkout checks out
+    # the calling repository. A script shipped alongside that workflow is therefore never
+    # on disk when it runs, and a failure inside a called workflow cannot be caught by the
+    # caller - GitHub permits no continue-on-error on a job that calls one. As an action
+    # the check is fetched independently of any checkout, and its failure path is
+    # assertable with a step-level continue-on-error, which is how the tests below stay
+    # green while still executing the real refusal.
+    - name: Require a pixi.toml
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+
+        if [[ -f pixi.toml ]]; then
+          echo "check-pixi-manifest: found pixi.toml in $(pwd)"
+          exit 0
+        fi
+
+        # Distinguish the two ways a pixi.toml can be absent. pixi itself accepts a
+        # manifest embedded in pyproject.toml under [tool.pixi.workspace] and resolves it
+        # automatically when no pixi.toml exists - so a repository in that shape is a
+        # working pixi workspace that this check still refuses. Reporting a bare absence
+        # there would read as a bug; naming the reason is what makes the refusal
+        # actionable.
+        if [[ -f pyproject.toml ]] && grep -qE '^[[:space:]]*\[tool\.pixi(\.[A-Za-z0-9_-]+)*\]' pyproject.toml; then
+          echo "::error::check-pixi-manifest: $(pwd) carries a [tool.pixi.*] table in pyproject.toml but no pixi.toml. Only a pixi.toml manifest is accepted."
+          exit 1
+        fi
+
+        echo "::error::check-pixi-manifest: no pixi.toml in $(pwd)."
+        exit 1
