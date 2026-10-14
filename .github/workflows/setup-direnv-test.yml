@@ -90,10 +90,54 @@ jobs:
           # pixi exposes the workspace's default-env bin on PATH. Resolving python
           # here (a later step) to that env proves the $GITHUB_PATH export, not just
           # a transient direnv shell. pixi itself is also exposed from ~/.pixi/bin.
-          pixi --version
+          #
+          # Assert the pixi VERSION, not merely that pixi runs: the whole point of
+          # `use pixi <version>` is that the runner gets the version the .envrc pins,
+          # and a bare `pixi --version` call would pass against any of them.
+          test "$(pixi --version)" = "pixi 0.81.0"
           command -v pixi | grep -q "$HOME/.pixi/bin/"
           python --version
           command -v python | grep -q "/setup-direnv/test/fixture-pixi/.pixi/envs/default/bin/"
+
+      # The fixture commits a pixi.lock, so the directive installs with --locked, which
+      # verifies the lockfile against the manifest rather than updating it. A clean tree
+      # is what proves it did not rewrite the committed lockfile. --untracked-files=all
+      # because the default summarises an untracked directory as a single entry.
+      - name: Assert --locked did not rewrite the lockfile
+        run: |
+          set -euo pipefail
+          if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+            echo "the pixi fixture modified the checkout:" >&2
+            git status --porcelain --untracked-files=all >&2
+            exit 1
+          fi
+
+  # `use pixi` needs its version: without one, pixi's installer would fall back to
+  # whatever is latest that day (install.sh does VERSION="${PIXI_VERSION:-latest}") and
+  # the runner would silently diverge from the pin the .envrc declares. This asserts the
+  # directive refuses instead - the mandatory-argument check is the only validation it
+  # does, so nothing else would catch a refactor that dropped it.
+  pixi-version-required:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run setup-direnv against an .envrc with an unversioned use pixi
+        id: run
+        continue-on-error: true
+        uses: ./setup-direnv
+        with:
+          working-directory: setup-direnv/test/fixture-pixi-unpinned
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected an unversioned 'use pixi' to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
 
   activate-dotenv:
     runs-on: ubuntu-latest
@@ -287,6 +331,7 @@ jobs:
       - activate-sdk
       - activate-fnm
       - activate-pixi
+      - pixi-version-required
       - activate-dotenv
       - stub-directives
       - stub-directives-omitted

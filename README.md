@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: TomBorglum/actions/setup-direnv@v1
+      - uses: TomBorglum/actions/setup-direnv@v2
         with:
           working-directory: .
 ```
