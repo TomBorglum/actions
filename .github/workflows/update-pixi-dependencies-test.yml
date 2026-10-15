@@ -1,0 +1,273 @@
+name: update-pixi-dependencies test
+
+# Exercises the update-pixi-dependencies composite action end to end: that it upgrades a
+# stale pixi.toml in place and rewrites the lockfile, that --pinning-strategy actually
+# reaches pixi (the constraint comes back exact, not merely changed), that feature-scoped
+# dependencies are upgraded too, that --no-install leaves no environment behind in the
+# checkout, that a second run reports no change, and that each of its three refusals -
+# no pixi, no manifest, an invalid pinning strategy - fails the step rather than passing
+# quietly.
+#
+# Three of those assertions guard behaviour pixi's own reference pages do not document:
+# that `--json` still writes the manifest, that `--pinning-strategy` is honoured by
+# `upgrade`, and that a bare upgrade covers [feature.*.dependencies]. All three were
+# verified by hand against a real pixi; these jobs are what notice if a future pixi
+# changes one.
+#
+# Deliberately NOT path-filtered. These tests gate the merge via the
+# update-pixi-dependencies-tests-pass job
+# below, and a path-filtered workflow cannot do that: when the filter excludes a PR its
+# checks stay Pending rather than passing, so a required check over a filtered workflow
+# deadlocks the pull request permanently.
+#
+# No secrets are used anywhere here, so a fork pull request running this at
+# contents: read can reach nothing. Each job does reach conda-forge, which is inherent -
+# an upgrade is a solve against a real channel, and there is nothing to assert without one.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade-outdated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Pinned and checksum-verified, not piped from an installer into a shell - see the
+      # script. The action under test installs no pixi, so every job provides one.
+      - name: Install pixi
+        run: bash .github/scripts/install-pixi.sh
+
+      - name: Upgrade the outdated fixture
+        id: upgrade
+        uses: ./update-pixi-dependencies
+        with:
+          working-directory: update-pixi-dependencies/test/fixture-outdated
+
+      - name: Assert the manifest, the lockfile and the outputs
+        working-directory: update-pixi-dependencies/test/fixture-outdated
+        env:
+          CHANGED: ${{ steps.upgrade.outputs.changed }}
+          SUMMARY: ${{ steps.upgrade.outputs.summary }}
+          PACKAGES_JSON: ${{ steps.upgrade.outputs.packages-json }}
+        run: |
+          set -euo pipefail
+          cat pixi.toml
+
+          # changed is the gate a pull-request workflow will hang off, and it is also the
+          # assertion that `--json` did not quietly turn the run into a dry run: pixi's
+          # v0.68 reference describes --json as previewing upgrades "without modifying
+          # files", which would leave this false forever.
+          test "$CHANGED" = 'true'
+
+          # Neither stale pin survives. The fixture's versions are hardcoded here on
+          # purpose: a fixture silently refreshed to the latest versions would make this
+          # whole job pass by having nothing to upgrade.
+          ! grep -q '==2024a' pixi.toml
+          ! grep -q '==2024.8.30' pixi.toml
+
+          # ... and both came back as EXACT constraints. This is the only assertion that
+          # --pinning-strategy reached pixi and was honoured: a pixi that accepted the
+          # flag and ignored it would still change the versions, just with a semver `>=`
+          # constraint, and every other check here would pass.
+          grep -qE '^tzdata = "==[0-9][^"]*"$' pixi.toml
+          grep -qE '^ca-certificates = "==[0-9][^"]*"$' pixi.toml
+
+          # The lockfile is rewritten even though the fixture commits none, because the
+          # pull request has to carry both files.
+          test -f pixi.lock
+
+          # --no-install, asserted. An environment here would mean a full package download
+          # per run and a directory a pull-request step must know to leave out.
+          test ! -d .pixi/envs
+
+          # The summary is what a pull request body will say, so it has to name both
+          # packages - the second of which is feature-scoped, which is this job's proof
+          # that a bare `pixi upgrade` does not stop at the default feature.
+          printf 'summary:\n%s\n' "$SUMMARY"
+          grep -q 'tzdata' <<<"$SUMMARY"
+          grep -q 'ca-certificates' <<<"$SUMMARY"
+
+          # packages-json is carried through unparsed, so assert only that something
+          # arrived - its shape is pixi's and nothing here depends on it.
+          test -n "$PACKAGES_JSON"
+
+  # The idempotency case, and the only deterministic way to test "no change": after the
+  # first run every constraint is pinned to the latest version, so the second has nothing
+  # to do. A failure here means a repeat upgrade is not a no-op - churn in pixi.lock, most
+  # likely - which a scheduled workflow would turn into an empty pull request every week.
+  no-change-on-rerun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Pinned and checksum-verified, not piped from an installer into a shell - see the
+      # script. The action under test installs no pixi, so every job provides one.
+      - name: Install pixi
+        run: bash .github/scripts/install-pixi.sh
+
+      - name: Upgrade the outdated fixture
+        id: first
+        uses: ./update-pixi-dependencies
+        with:
+          working-directory: update-pixi-dependencies/test/fixture-outdated
+
+      - name: Upgrade it again
+        id: second
+        uses: ./update-pixi-dependencies
+        with:
+          working-directory: update-pixi-dependencies/test/fixture-outdated
+
+      - name: Assert the second run changed nothing
+        env:
+          FIRST: ${{ steps.first.outputs.changed }}
+          SECOND: ${{ steps.second.outputs.changed }}
+          SUMMARY: ${{ steps.second.outputs.summary }}
+        run: |
+          set -euo pipefail
+          test "$FIRST" = 'true'
+          test "$SECOND" = 'false'
+          # An empty summary beside changed=false is the contract a pull-request body
+          # relies on - there is nothing to say, and saying nothing is not the same as
+          # saying "could not summarise".
+          test -z "$SUMMARY"
+
+  # A missing manifest must be an error, not a no-op. The check also stops pixi's manifest
+  # discovery walking up to a parent workspace: .github has no pixi.toml, but the
+  # repository root does not either, so a regression that dropped the file test would be
+  # caught by a different directory than this one - hence the assertion is on the failure,
+  # not on what pixi did.
+  missing-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Pinned and checksum-verified, not piped from an installer into a shell - see the
+      # script. The action under test installs no pixi, so every job provides one.
+      - name: Install pixi
+        run: bash .github/scripts/install-pixi.sh
+
+      - name: Run the action where there is no pixi.toml
+        id: run
+        continue-on-error: true
+        uses: ./update-pixi-dependencies
+        with:
+          working-directory: .github
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected a missing pixi.toml to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
+
+  # The action installs no pixi, so it has to say so rather than fail obscurely several
+  # lines later. Deliberately skips the install step above. If a GitHub runner image ever
+  # ships pixi preinstalled this job fails loudly, which is the right way to find out.
+  pixi-missing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run the action with no pixi on PATH
+        id: run
+        continue-on-error: true
+        uses: ./update-pixi-dependencies
+        with:
+          working-directory: update-pixi-dependencies/test/fixture-outdated
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected a missing pixi to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
+
+  # pinning-strategy is handed to pixi without validation, so this is the job that proves
+  # the pass-through is safe rather than merely convenient: the value arrives as ONE
+  # argument, pixi rejects it, and the step fails with pixi's message. The shell
+  # metacharacters are the whole point - if the value were ever eval'd or run through a
+  # shell, /tmp/pwned would exist, and the step might even have gone green.
+  invalid-pinning-strategy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Pinned and checksum-verified, not piped from an installer into a shell - see the
+      # script. The action under test installs no pixi, so every job provides one.
+      - name: Install pixi
+        run: bash .github/scripts/install-pixi.sh
+
+      - name: Run the action with an injected pinning strategy
+        id: run
+        continue-on-error: true
+        uses: ./update-pixi-dependencies
+        with:
+          working-directory: update-pixi-dependencies/test/fixture-outdated
+          pinning-strategy: 'exact-version; touch /tmp/pwned'
+
+      - name: Assert the value was rejected and nothing executed
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected an invalid pinning-strategy to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
+          if [[ -e /tmp/pwned ]]; then
+            echo "the injected command executed despite the step failing" >&2
+            exit 1
+          fi
+          # The manifest must be untouched too: pixi rejects the argument while parsing
+          # its own command line, before it reads or writes anything.
+          if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+            echo "the rejected run modified the checkout:" >&2
+            git status --porcelain --untracked-files=all >&2
+            exit 1
+          fi
+
+  # The required status check for this action, and the only job name the main-protection
+  # ruleset needs to know. Listing all five above would be five entries to keep in sync,
+  # and a renamed job would quietly stop gating; this aggregate fails closed instead.
+  #
+  # The name carries the action's prefix because a required context is matched by NAME:
+  # two workflows whose aggregates were both called `tests-pass` would leave one required
+  # context standing for two different check runs, and GitHub documents no rule for which
+  # of them it then gates on. One context per workflow, each matching exactly one job.
+  #
+  # ANY JOB ADDED ABOVE MUST BE ADDED TO needs: - a job left out runs but gates nothing.
+  #
+  # `if: always()` is load-bearing: without it this job is skipped when an upstream job
+  # fails, and a skipped job reports Success, so the gate would pass precisely when it
+  # should not.
+  update-pixi-dependencies-tests-pass:
+    if: always()
+    needs:
+      - upgrade-outdated
+      - no-change-on-rerun
+      - missing-manifest
+      - pixi-missing
+      - invalid-pinning-strategy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every job succeeded
+        env:
+          FAILED: ${{ contains(needs.*.result, 'failure') }}
+          CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
+        run: |
+          set -euo pipefail
+          if [[ "$FAILED" != "false" || "$CANCELLED" != "false" ]]; then
+            echo "update-pixi-dependencies tests did not all pass (failure=$FAILED cancelled=$CANCELLED)" >&2
+            exit 1
+          fi
