@@ -71,7 +71,37 @@ empty while `changed` is `true`.
 
 `packages-json` is pixi's own output, carried through untouched. Nothing in this action
 parses it, so nothing here breaks if its shape changes — but for the same reason, treat it
-as pixi's interface rather than this action's.
+as pixi's interface rather than this action's. As of pixi 0.81.0 it is a **lockfile** diff,
+keyed by environment and then platform:
+
+```json
+{
+  "version": 1,
+  "environment": {
+    "default": {
+      "linux-64": [
+        {
+          "name": "tzdata",
+          "before": null,
+          "after": {
+            "conda": "https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda",
+            "sha256": "b928c30d…", "md5": "fcb489df…",
+            "license": "LicenseRef-Public-Domain", "size": 118849, "timestamp": 1784250406640
+          },
+          "type": "conda",
+          "explicit": true
+        }
+      ]
+    }
+  }
+}
+```
+
+Note what it is *not*: a list of constraint changes. `before` and `after` are locked
+package records, so `before` is `null` for every entry when the workspace committed no
+`pixi.lock`, and a package that moved only because a transitive pin shifted appears here
+with no corresponding `pixi.toml` change at all. That is why `summary` is derived from the
+manifest instead — the two answer different questions.
 
 ## What the action runs
 
