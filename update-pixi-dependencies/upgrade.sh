@@ -59,8 +59,9 @@ esac
 # guard against error: a workspace that commits no pixi.lock has one created by the
 # upgrade, and that is a change the caller must see.
 hash_of() {
-  if [[ -f "$1" ]]; then
-    sha256sum "$1" | cut -d' ' -f1
+  local file=$1
+  if [[ -f "$file" ]]; then
+    sha256sum "$file" | cut -d' ' -f1
   fi
 }
 

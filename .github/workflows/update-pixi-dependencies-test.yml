@@ -36,19 +36,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The action installs no pixi - it upgrades with the one the job provides - so
-      # every job here provides one. Pinned, because an upgrade is the judgement of a
-      # particular resolver and a floating pixi would make a red run unattributable.
-      # This is CI-only: it runs on this repo's runners, never a consumer's, so bumping
-      # it is a `ci:` change that cuts no release.
+      # Pinned and checksum-verified, not piped from an installer into a shell - see the
+      # script. The action under test installs no pixi, so every job provides one.
       - name: Install pixi
-        env:
-          PIXI_VERSION: 0.81.0
-        run: |
-          set -euo pipefail
-          curl -fsSL --proto '=https' --tlsv1.2 https://pixi.sh/install.sh \
-            | PIXI_NO_PATH_UPDATE=1 bash
-          echo "$HOME/.pixi/bin" >> "$GITHUB_PATH"
+        run: bash .github/scripts/install-pixi.sh
 
       - name: Upgrade the outdated fixture
         id: upgrade
@@ -113,14 +104,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Pinned and checksum-verified, not piped from an installer into a shell - see the
+      # script. The action under test installs no pixi, so every job provides one.
       - name: Install pixi
-        env:
-          PIXI_VERSION: 0.81.0
-        run: |
-          set -euo pipefail
-          curl -fsSL --proto '=https' --tlsv1.2 https://pixi.sh/install.sh \
-            | PIXI_NO_PATH_UPDATE=1 bash
-          echo "$HOME/.pixi/bin" >> "$GITHUB_PATH"
+        run: bash .github/scripts/install-pixi.sh
 
       - name: Upgrade the outdated fixture
         id: first
@@ -158,14 +145,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Pinned and checksum-verified, not piped from an installer into a shell - see the
+      # script. The action under test installs no pixi, so every job provides one.
       - name: Install pixi
-        env:
-          PIXI_VERSION: 0.81.0
-        run: |
-          set -euo pipefail
-          curl -fsSL --proto '=https' --tlsv1.2 https://pixi.sh/install.sh \
-            | PIXI_NO_PATH_UPDATE=1 bash
-          echo "$HOME/.pixi/bin" >> "$GITHUB_PATH"
+        run: bash .github/scripts/install-pixi.sh
 
       - name: Run the action where there is no pixi.toml
         id: run
@@ -217,14 +200,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Pinned and checksum-verified, not piped from an installer into a shell - see the
+      # script. The action under test installs no pixi, so every job provides one.
       - name: Install pixi
-        env:
-          PIXI_VERSION: 0.81.0
-        run: |
-          set -euo pipefail
-          curl -fsSL --proto '=https' --tlsv1.2 https://pixi.sh/install.sh \
-            | PIXI_NO_PATH_UPDATE=1 bash
-          echo "$HOME/.pixi/bin" >> "$GITHUB_PATH"
+        run: bash .github/scripts/install-pixi.sh
 
       - name: Run the action with an injected pinning strategy
         id: run
