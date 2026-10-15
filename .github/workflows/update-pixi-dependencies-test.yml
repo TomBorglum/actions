@@ -193,9 +193,11 @@ jobs:
             exit 1
           fi
 
-  # pinning-strategy reaches a command line, so the action allowlists it. This asserts the
-  # rejection *and* that nothing ran - a validation that fired after the fact would still
-  # have executed the payload.
+  # pinning-strategy is handed to pixi without validation, so this is the job that proves
+  # the pass-through is safe rather than merely convenient: the value arrives as ONE
+  # argument, pixi rejects it, and the step fails with pixi's message. The shell
+  # metacharacters are the whole point - if the value were ever eval'd or run through a
+  # shell, /tmp/pwned would exist, and the step might even have gone green.
   invalid-pinning-strategy:
     runs-on: ubuntu-latest
     steps:
@@ -227,7 +229,8 @@ jobs:
             echo "the injected command executed despite the step failing" >&2
             exit 1
           fi
-          # The manifest must be untouched too: the validation runs before pixi does.
+          # The manifest must be untouched too: pixi rejects the argument while parsing
+          # its own command line, before it reads or writes anything.
           if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
             echo "the rejected run modified the checkout:" >&2
             git status --porcelain --untracked-files=all >&2

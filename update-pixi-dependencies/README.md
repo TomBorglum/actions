@@ -37,17 +37,23 @@ when to pin more tightly.
 | Input | Default | Description |
 | --- | --- | --- |
 | `working-directory` | `.` | Directory containing the `pixi.toml` to upgrade. |
-| `pinning-strategy` | `exact-version` | How pixi rewrites each constraint it upgrades. One of `no-pin`, `semver`, `major`, `minor`, `latest-up`, `exact-version`. |
+| `pinning-strategy` | `exact-version` | How pixi rewrites each constraint it upgrades. Passed through to `pixi upgrade --pinning-strategy`, which owns the valid values. |
 
 `exact-version` is the default because it is what makes the resulting pull request
 reviewable: every upgrade is a visible `==1.2.3` → `==1.3.0`, and the diff states exactly
-what moved. The other strategies are pixi's own and are passed straight through —
-`no-pin` writes `*`, `major` writes `>=1.2.3, <2`, and so on.
+what moved. Every other strategy is pixi's own and is passed straight through — `no-pin`
+writes `*`, `major` writes `>=1.2.3, <2`, and so on; pixi's
+[configuration reference](https://pixi.prefix.dev/latest/reference/pixi_configuration/)
+is the list.
 
-The value is checked against that list before it reaches a command line, and anything
-else fails the step. It is an allowlist rather than careful quoting for the same reason
-`setup-direnv` validates `stub-directives`: an input that reaches a command is the
-script-injection vector [`SECURITY.md`](../SECURITY.md) names.
+**The value is not validated here, on purpose.** It reaches pixi as one quoted argument —
+never `eval`'d, never handed to a shell — so it cannot inject a command, and being a
+single argument it cannot smuggle a second flag either: the worst a crafted value achieves
+is an argument pixi rejects, which fails the step. pixi's own error then names the values
+it accepts, which beats anything this action could say, and an allowlist here would be a
+copy of pixi's list to go stale — rejecting a valid strategy the day pixi adds one. (The
+`stub-directives` check in [`setup-direnv`](../setup-direnv/) is not the same case: that
+value reaches a generated function definition, which is code.)
 
 ## Outputs
 
@@ -125,16 +131,19 @@ pixi upgrade --no-install --pinning-strategy <strategy> --json
 constraints, which is not a dependency bump. `upgrade` rewrites the constraints in the
 manifest, which is what Dependabot would have done.
 
-## Three ways it fails
+## How it fails
 
-All three are hard errors, because this action exists to produce a bump and a green run
-that silently bumped nothing is worse than a red one.
+Both of its own checks are hard errors, because this action exists to produce a bump and a
+green run that silently bumped nothing is worse than a red one.
 
 | Condition | Why it is not tolerated |
 | --- | --- |
 | `pixi` is not on `PATH` | The action installs none (see below). The message names the two ways to provide one. |
 | No `pixi.toml` in `working-directory` | pixi's manifest discovery walks **parent** directories, so without this check a mis-pointed `working-directory` would quietly upgrade whichever workspace sits above it in the checkout — and report success. |
-| `pinning-strategy` is not one of the six | See [Inputs](#inputs). |
+
+Anything else that goes wrong is pixi's to report: a non-zero exit from `pixi upgrade` —
+an unresolvable solve, an unknown `pinning-strategy`, a manifest it rejects — fails the
+step with pixi's own message, never `|| true`'d into a green run.
 
 ## Requirements
 

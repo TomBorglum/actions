@@ -6,9 +6,9 @@ set -euo pipefail
 # exists to produce a dependency bump, and a green run that silently bumped nothing is
 # the one outcome worse than a red one.
 #
-# Reads two variables the action passes through env: (never interpolated into the step's
+# Reads one variable the action passes through env: (never interpolated into the step's
 # run: body - see SECURITY.md):
-#   PINNING_STRATEGY - the --pinning-strategy value, validated below.
+#   PINNING_STRATEGY - passed straight through to --pinning-strategy.
 # The working directory is set by the step itself, so this script always runs with the
 # workspace it is to upgrade as $PWD.
 
@@ -42,19 +42,6 @@ if [[ ! -f pixi.toml ]]; then
   exit 1
 fi
 
-# The strategy reaches a command line, so it is allowlisted rather than quoted-and-hoped
-# - the same judgement as setup-direnv's bare-identifier check on stub-directives. The
-# set is pixi's own documented one; validating here also turns a typo into this message
-# instead of a clap error from a tool the caller did not invoke directly.
-case "${PINNING_STRATEGY:-}" in
-  no-pin | semver | major | minor | latest-up | exact-version) ;;
-  *)
-    echo "update-pixi-dependencies: invalid pinning-strategy '${PINNING_STRATEGY:-}'." >&2
-    echo "Expected one of: no-pin semver major minor latest-up exact-version" >&2
-    exit 1
-    ;;
-esac
-
 # sha256 of a file, or the empty string when it does not exist. The missing case is not a
 # guard against error: a workspace that commits no pixi.lock has one created by the
 # upgrade, and that is a change the caller must see.
@@ -86,9 +73,18 @@ cp pixi.toml "$work/pixi.toml.before"
 # stdout is captured rather than piped so pixi's exit code is the only success signal,
 # then echoed into the log - a failed run's partial output is worth reading, and the
 # JSON is otherwise invisible to anyone debugging from the log alone.
+#
+# PINNING_STRATEGY is passed through WITHOUT validation, deliberately. It is one quoted
+# argv element - never eval'd, never handed to a shell - so it cannot inject a command,
+# and because it is a single element it cannot smuggle a second flag either; the worst a
+# crafted value achieves is an argument pixi rejects. pixi's own clap error names the
+# values it accepts, which is better than a message here could be: an allowlist would be
+# a copy of pixi's list to keep in sync, and the day pixi adds a strategy it would reject
+# a valid one. (Contrast setup-direnv's stub-directives check, which is NOT the same
+# case: that value reaches a generated function definition, i.e. actual code.)
 json="$work/upgrade.json"
 upgrade_status=0
-pixi upgrade --no-install --pinning-strategy "$PINNING_STRATEGY" --json >"$json" || upgrade_status=$?
+pixi upgrade --no-install --pinning-strategy "${PINNING_STRATEGY:-}" --json >"$json" || upgrade_status=$?
 cat "$json"
 if ((upgrade_status != 0)); then
   echo "update-pixi-dependencies: pixi upgrade failed in $(pwd)" >&2

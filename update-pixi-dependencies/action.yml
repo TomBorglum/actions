@@ -18,10 +18,11 @@ inputs:
     default: '.'
   pinning-strategy:
     description: >-
-      How pixi rewrites each version constraint it upgrades. One of no-pin, semver,
-      major, minor, latest-up or exact-version; anything else fails the step. The
-      default, exact-version, writes `==1.2.3`, which is what makes the resulting pull
-      request a reviewable statement of exactly what moved.
+      How pixi rewrites each version constraint it upgrades. Passed straight through to
+      `pixi upgrade --pinning-strategy`, which owns the list of valid values and names
+      them if the value is wrong. The default, exact-version, writes `==1.2.3`, which is
+      what makes the resulting pull request a reviewable statement of exactly what
+      moved.
     required: false
     default: 'exact-version'
 
