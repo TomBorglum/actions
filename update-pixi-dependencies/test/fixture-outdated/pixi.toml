@@ -1,0 +1,24 @@
+# A workspace deliberately pinned to stale versions, for update-pixi-dependencies-test.yml.
+# The test upgrades it in place and asserts what moved; the stale pins are what make the
+# assertions meaningful, so DO NOT refresh them - a fixture pinned to the latest versions
+# would pass the test by having nothing to do.
+[workspace]
+name = "fixture-outdated"
+channels = ["conda-forge"]
+# One platform only: the solve is the slow part of the test, and the action's contract
+# has nothing per-platform in it.
+platforms = ["linux-64"]
+
+# Both packages are dependency-free and released often. Dependency-free keeps the solve
+# cheap; released often is what guarantees a newer version exists to upgrade to.
+[dependencies]
+tzdata = "==2024a"
+
+# A feature-scoped dependency, and the only reason it is here: a bare `pixi upgrade`
+# upgrades these as well as the default feature's, and this is what re-checks that on
+# every pull request rather than taking it on trust.
+[feature.extra.dependencies]
+ca-certificates = "==2024.8.30"
+
+[environments]
+extra = ["extra"]

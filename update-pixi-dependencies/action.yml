@@ -1,0 +1,64 @@
+name: update-pixi-dependencies
+description: >-
+  Upgrade a pixi workspace's dependencies in place - rewriting pixi.toml and pixi.lock -
+  and report what changed, for a workflow to turn into a pull request. Closes the gap
+  Dependabot leaves: it has no pixi ecosystem.
+
+# Metadata only. No Marketplace listing is published, and none could be: a listing
+# requires action.yml at the repository root, which every action here deliberately
+# avoids (see CONTRIBUTING.md, "Never put an action.yml at the repository root").
+branding:
+  icon: refresh-cw
+  color: blue
+
+inputs:
+  working-directory:
+    description: Directory containing the pixi.toml to upgrade.
+    required: false
+    default: '.'
+  pinning-strategy:
+    description: >-
+      How pixi rewrites each version constraint it upgrades. One of no-pin, semver,
+      major, minor, latest-up or exact-version; anything else fails the step. The
+      default, exact-version, writes `==1.2.3`, which is what makes the resulting pull
+      request a reviewable statement of exactly what moved.
+    required: false
+    default: 'exact-version'
+
+outputs:
+  changed:
+    description: >-
+      'true' when pixi.toml or pixi.lock differs after the upgrade, 'false' otherwise.
+      Gate a pull-request step on this.
+    value: ${{ steps.upgrade.outputs.changed }}
+  summary:
+    description: >-
+      Markdown table of what moved (package, from, to), derived from the pixi.toml diff.
+      Empty when nothing changed. Suitable for a pull request body.
+    value: ${{ steps.upgrade.outputs.summary }}
+  packages-json:
+    description: >-
+      The stdout of `pixi upgrade --json`, verbatim and unparsed. Its shape is pixi's,
+      not this action's, and may change between pixi releases - `changed` and `summary`
+      are both derived independently of it.
+    value: ${{ steps.upgrade.outputs.packages-json }}
+
+runs:
+  using: composite
+  steps:
+    # One step, with the logic in a script rather than inline: SonarCloud's shell
+    # analyser sees a .sh file, `bash -n` can check it, and it keeps the action.yml
+    # readable. Run through `bash` because the script is mode 644, like every other
+    # script here.
+    #
+    # The inputs reach it through env: rather than an inline ${{ }} because an
+    # interpolated input is the script-injection vector SECURITY.md names - and because
+    # a composite action does not expose its inputs to run: steps as INPUT_* variables
+    # the way a JavaScript action's runtime does.
+    - name: Upgrade pixi dependencies
+      id: upgrade
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PINNING_STRATEGY: ${{ inputs.pinning-strategy }}
+      run: bash "$GITHUB_ACTION_PATH/upgrade.sh"

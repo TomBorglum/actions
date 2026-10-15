@@ -20,6 +20,7 @@ jobs:
 | Action | Purpose |
 | --- | --- |
 | [`setup-direnv`](setup-direnv/) | Install direnv and evaluate a repository's `.envrc`, exporting the language runtimes and variables it declares to later workflow steps. |
+| [`update-pixi-dependencies`](update-pixi-dependencies/) | Upgrade a pixi workspace's dependencies in place and report what moved — the gap Dependabot leaves, having no `pixi` ecosystem. |
 
 ## Versioning and pinning
 
