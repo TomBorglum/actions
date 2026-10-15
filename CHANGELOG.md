@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/TomBorglum/actions/compare/v2.0.0...v2.1.0) (2026-10-15)
+
+
+### Features
+
+* add update-pixi-dependencies action ([#8](https://github.com/TomBorglum/actions/issues/8)) ([bfcea93](https://github.com/TomBorglum/actions/commit/bfcea939f4d228cabc47ae16509ea865d2ddf03f))
+
 ## [2.0.0](https://github.com/TomBorglum/actions/compare/v1.0.0...v2.0.0) (2026-10-14)
 
 
