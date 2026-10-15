@@ -166,11 +166,29 @@ index.
 
 ## What this action does not do
 
-**It does not open a pull request.** That is a reusable workflow, deliberately separate
-and not yet written; [`update-direnv.yml`](../.github/workflows/update-direnv.yml) is the
-shape it will take — a GitHub App token (events created with `GITHUB_TOKEN` do not trigger
-the required checks on the resulting PR), a bot commit identity, and
-`peter-evans/create-pull-request` gated on this action's `changed` output.
+**It does not open a pull request.** That is a reusable workflow, deliberately separate:
+[`TomBorglum/workflows/.github/workflows/update-pixi-dependencies.yml`](https://github.com/TomBorglum/workflows/blob/main/.github/workflows/update-pixi-dependencies.yml),
+which wraps this action and is what to call to get the pull request as well:
+
+```yaml
+jobs:
+  update:
+    uses: TomBorglum/workflows/.github/workflows/update-pixi-dependencies.yml@v1
+    secrets:
+      app-client-id: ${{ secrets.AUTOMATION_APP_CLIENT_ID }}
+      app-private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+```
+
+It provides pixi with [`setup-direnv`](../setup-direnv/) from the calling repository's own
+`.envrc`, authenticates as a GitHub App (events created with `GITHUB_TOKEN` do not trigger
+the required checks on the resulting PR), and gates
+`peter-evans/create-pull-request` on this action's `changed` output — the shape
+[`update-direnv.yml`](../.github/workflows/update-direnv.yml) established, with two
+differences worth knowing if you are reading that one as a model. It sets `sign-commits`,
+which signs the commit as the App and makes the bot identity that workflow resolves by
+hand unnecessary; and it names `add-paths` explicitly, because `setup-direnv` runs
+`pixi install` and the materialised environment would otherwise be committed along with
+the two files that matter.
 
 It also does not commit, push, or run `pixi install`. It leaves two modified files in the
 checkout and three outputs describing them.
