@@ -169,7 +169,8 @@ checkout and three outputs describing them.
 ## Tests
 
 [`.github/workflows/update-pixi-dependencies-test.yml`](../.github/workflows/update-pixi-dependencies-test.yml)
-runs on every pull request, aggregated into the `tests-pass` required check. It upgrades
+runs on every pull request, aggregated into the `update-pixi-dependencies-tests-pass`
+required check. It upgrades
 [`test/fixture-outdated`](test/fixture-outdated/) — a workspace pinned to deliberately
 stale versions — and asserts the manifest, the lockfile, the absence of an environment and
 all three outputs, then asserts that a second run reports no change and that each of the

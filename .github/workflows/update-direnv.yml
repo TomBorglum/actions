@@ -3,7 +3,7 @@ name: Update direnv
 # Maintains the direnv version pinned in the setup-direnv composite action. Dependabot
 # can't track a version pinned in a shell script, and wouldn't refresh the embedded
 # checksums anyway. This job does both, then opens a PR that goes through the normal
-# tests-pass + SonarCloud gates and branch rules before merge.
+# setup-direnv-tests-pass + SonarCloud gates and branch rules before merge.
 #
 # Internal machinery: it lives under .github/workflows/, which is never published, so a
 # consumer of @v1 never fetches or runs it. What it *edits* is published, which is what
@@ -129,7 +129,8 @@ jobs:
             binaries (direnv ships no `checksums.txt`). The setup-direnv test workflow
             runs on every pull request, so the new version is exercised end to end -
             `install-arm64` is the only job anywhere that verifies the `arm64` sum.
-            `tests-pass` and the SonarCloud gate must both be green before merge.
+            `setup-direnv-tests-pass` and the SonarCloud gate must both be green before
+            merge.
 
             Merging this cuts a patch release, which is how the new direnv reaches
             consumers pinned to `@v1`.

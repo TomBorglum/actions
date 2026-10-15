@@ -188,11 +188,16 @@ Each action lives in its own top-level directory and is consumed as
   end to end on `pull_request`. Test what would actually break a consumer — in
   particular that anything the action exports via `$GITHUB_PATH` or `$GITHUB_ENV` is
   visible to *subsequent* steps, not just inside the action.
-- A `tests-pass` job in that workflow, with `if: always()` and `needs:` listing every
-  other job, failing if any of them failed or was cancelled. **Add it to the
+- A `<name>-tests-pass` job in that workflow, with `if: always()` and `needs:` listing
+  every other job, failing if any of them failed or was cancelled. **Add it to the
   `main-protection` ruleset's required status checks**, which is a repository-settings
   change and not part of the PR. Every job added to the workflow later must be added to
   `needs:` too — a job left out runs but gates nothing.
+
+  **Name it after the action, not plain `tests-pass`.** A required context is matched by
+  name, so two workflows whose aggregates share one would leave a single required context
+  standing for two different check runs — and GitHub documents no rule for which of them
+  it then gates on. One context per workflow, each matching exactly one job.
 - A `deps:`-prefixed Dependabot entry for the new directory in
   [`.github/dependabot.yml`](.github/dependabot.yml). Forgetting this means the action's
   pins silently stop being updated.

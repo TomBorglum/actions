@@ -53,7 +53,9 @@ bypass actors, including for maintainers. Version tags have their own ruleset ma
 immutable.
 
 Each action's tests gate its own merges. They run on every pull request and report through
-a single `tests-pass` check per action, so a red test cannot be merged around.
+a single `<name>-tests-pass` check per action, so a red test cannot be merged around. The
+name is per action on purpose: a required check is matched by name, so two workflows
+sharing one would leave a single required context standing for two different check runs.
 
 Every third-party action used here, in a workflow or inside a published `action.yml`,
 is pinned to a full commit SHA; Dependabot keeps those pins fresh, with a cooldown on

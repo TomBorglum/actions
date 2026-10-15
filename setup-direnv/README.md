@@ -175,8 +175,8 @@ Reached only by the directives a given `.envrc` actually uses, always over HTTPS
 
 [`.github/workflows/setup-direnv-test.yml`](../.github/workflows/setup-direnv-test.yml)
 runs one job per fixture in [`test/`](test/) on every pull request, aggregated into the
-`tests-pass` required check. Each job asserts in a **later** step than the action's own, so
+`setup-direnv-tests-pass` required check. Each job asserts in a **later** step than the action's own, so
 a passing run proves the cross-step export rather than a transient direnv shell.
 
 Adding a directive means adding a fixture `.envrc` that exercises it end to end — install
-plus cross-step propagation — and adding its job to `tests-pass`'s `needs:`.
+plus cross-step propagation — and adding its job to `setup-direnv-tests-pass`'s `needs:`.

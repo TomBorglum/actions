@@ -8,7 +8,7 @@ name: setup-direnv test
 # without exporting anything or accepting an injected name, and that the action fails when
 # there is no .envrc to act on.
 #
-# Deliberately NOT path-filtered. These tests gate the merge via the tests-pass job
+# Deliberately NOT path-filtered. These tests gate the merge via the setup-direnv-tests-pass job
 # below, and a path-filtered workflow cannot do that: when the filter excludes a PR its
 # checks stay Pending rather than passing, so a required check over a filtered workflow
 # deadlocks the pull request permanently. Running always is cheap because the action's own
@@ -316,16 +316,21 @@ jobs:
             exit 1
           fi
 
-  # The required status check, and the only job name the main-protection ruleset needs
-  # to know. Listing all nine above would be nine entries to keep in sync, and a renamed
-  # job would quietly stop gating; this aggregate fails closed instead.
+  # The required status check for this action, and the only job name the main-protection
+  # ruleset needs to know. Listing all nine above would be nine entries to keep in sync,
+  # and a renamed job would quietly stop gating; this aggregate fails closed instead.
+  #
+  # The name carries the action's prefix because a required context is matched by NAME:
+  # two workflows whose aggregates were both called `tests-pass` would leave one required
+  # context standing for two different check runs, and GitHub documents no rule for which
+  # of them it then gates on. One context per workflow, each matching exactly one job.
   #
   # ANY JOB ADDED ABOVE MUST BE ADDED TO needs: - a job left out runs but gates nothing.
   #
   # `if: always()` is load-bearing: without it this job is skipped when an upstream job
   # fails, and a skipped job reports Success, so the gate would pass precisely when it
   # should not.
-  tests-pass:
+  setup-direnv-tests-pass:
     if: always()
     needs:
       - activate-sdk
