@@ -31,7 +31,7 @@ updates:
   # Listed individually rather than as "/direnv/*". `directories` does expand globs, but
   # dependabot-core routes them through an experiment flag, and a glob that silently
   # expands to nothing is the exact failure this entry exists to prevent: the pins stop
-  # being updated and nothing says so. Revisit once the list is long enough to be a chore.
+  # being updated and nothing says so.
   #
   # The cooldown is the difference that matters: a "deps" bump republishes to other
   # people's workflows, so leave upstream time to withdraw a bad or compromised

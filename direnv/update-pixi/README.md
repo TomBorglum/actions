@@ -5,13 +5,10 @@ Bump the [pixi](https://pixi.sh) version pinned by direnv's `use pixi` directive
 a pull request.
 
 **Dependabot has no direnv ecosystem.** A tool version pinned in an `.envrc` is therefore
-never bumped for you — and unlike a version in a manifest, nothing else notices it has
-gone stale either. This action is the half that detects the release and rewrites the line;
-the workflow that opens the pull request is **not** here — see
-[below](#what-this-action-does-not-do).
+never bumped for you. This action detects the release and rewrites the line; it opens no
+pull request — see [below](#what-this-action-does-not-do).
 
-It is the pixi member of a family: one action per `.envrc` directive, each owning its own
-line format and its own upstream. `use fnm` and `use sdk` are not covered yet.
+Its scope is one directive. No other line in the `.envrc` is read or written.
 
 > **Not to be confused with [`update-pixi-dependencies`](../../update-pixi-dependencies/),**
 > which is the other half of the same chore from the other end. This action updates **pixi
@@ -45,9 +42,7 @@ when to pin more tightly.
 | --- | --- | --- |
 | `working-directory` | `.` | Directory containing the `.envrc` to update. |
 
-The `.envrc` in **that** directory and no other. There is no parent-directory walk: a
-`working-directory` holding no `.envrc` is an error, not an invitation to look upwards and
-update somebody else's pin.
+The working directory must contain an `.envrc`.
 
 ## Outputs
 
@@ -142,20 +137,11 @@ Nothing else — no package channel, no PyPI index, no API.
 
 ## What this action does not do
 
-**It does not open a pull request.** That will be a reusable workflow in
-[`TomBorglum/workflows`](https://github.com/TomBorglum/workflows), deliberately separate
-and not yet written: it will scan the `.envrc`, delegate to whichever directive actions
-apply, and open one pull request for the result — so a caller references the workflow and
-never names a directive.
-[`update-pixi-dependencies.yml`](https://github.com/TomBorglum/workflows/blob/main/.github/workflows/update-pixi-dependencies.yml)
-is the established shape for that half: a GitHub App token (events created with
-`GITHUB_TOKEN` do not trigger the required checks on the resulting PR), `sign-commits`,
-an explicit `add-paths`, and a `dry-run` input so the workflow's own test needs no secrets.
+**It does not open a pull request.** It rewrites the `.envrc` and reports what moved;
+committing that and opening the pull request belong to the workflow that calls it.
 
-**It does not install pixi, or run it.** It never downloads a binary, so the pin it writes
-is not verified as solvable against your workspace — if a newer pixi wants a different
-`pixi.lock`, that surfaces as a red required check on the pull request, where
-[`setup-direnv`](../../setup-direnv/)'s `use_pixi` runs `pixi install --locked`.
+**It does not install or run pixi.** It never downloads a binary, so the version it writes
+is not verified against your workspace.
 
 **It does not compare version ordering.** The pin is rewritten whenever it differs from
 what `releases/latest` reports, which is what
@@ -165,7 +151,7 @@ knowing why that is a choice: GitHub orders "latest" by `created_at` — the dat
 principle outrank a higher version and move a pin backwards. Upstream has never done it —
 every release to date is monotonic in both version and commit date, each patch following
 its own minor — and a downgrade would still arrive as a reviewable pull request rather than
-a silent commit. A `sort -V` guard can be added later without a breaking change.
+a silent commit.
 
 It also does not commit or push. It leaves one modified file in the checkout and four
 outputs describing it.
