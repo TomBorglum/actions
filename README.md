@@ -2,7 +2,9 @@
 
 Reusable GitHub Actions, maintained in one place and released together.
 
-Each action lives in its own top-level directory and is referenced by path:
+Each action lives in its own directory and is referenced by path. Actions sharing a
+domain are grouped under one — `direnv/` holds those that maintain what an `.envrc`
+declares — so the reference is whatever the directory listing shows:
 
 ```yaml
 jobs:
@@ -20,7 +22,7 @@ jobs:
 | Action | Purpose |
 | --- | --- |
 | [`setup-direnv`](setup-direnv/) | Install direnv and evaluate a repository's `.envrc`, exporting the language runtimes and variables it declares to later workflow steps. |
-| [`update-pixi`](update-pixi/) | Bump the pixi version pinned by `use pixi` in an `.envrc` — updating **pixi itself**, which Dependabot has no direnv ecosystem to see. |
+| [`update-pixi`](direnv/update-pixi/) | Bump the pixi version pinned by `use pixi` in an `.envrc` — updating **pixi itself**, which Dependabot has no direnv ecosystem to see. |
 | [`update-pixi-dependencies`](update-pixi-dependencies/) | Upgrade the dependencies **inside** a pixi workspace — `pixi.toml` and `pixi.lock` — and report what moved, the gap Dependabot leaves having no `pixi` ecosystem. |
 
 ## Versioning and pinning

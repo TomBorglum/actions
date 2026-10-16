@@ -9,7 +9,7 @@ never bumped for you, however many other ecosystems your repository has covered.
 action is the half of the replacement that performs the upgrade; the workflow that opens
 the pull request is **not** here — see [below](#what-this-action-does-not-do).
 
-> **Not to be confused with [`update-pixi`](../update-pixi/),** which is the same chore from
+> **Not to be confused with [`update-pixi`](../direnv/update-pixi/),** which is the same chore from
 > the other end. This action upgrades **the dependencies inside a workspace**, using whatever
 > pixi the job provides. That one bumps **pixi itself**, in the `use pixi <version>` line of an
 > `.envrc`. They touch no file in common and can run independently.

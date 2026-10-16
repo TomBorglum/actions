@@ -1,4 +1,4 @@
-name: update-pixi test
+name: direnv/update-pixi test
 
 # Exercises the update-pixi composite action end to end: that it rewrites a stale
 # `use pixi <version>` pin in an .envrc, that it replaces only that one field and leaves
@@ -17,7 +17,7 @@ name: update-pixi test
 # action detects a release rather than running one, so it needs no toolchain at all.
 #
 # Deliberately NOT path-filtered. These tests gate the merge via the
-# update-pixi-tests-pass job below, and a path-filtered workflow cannot do that: when the
+# direnv-update-pixi-tests-pass job below, and a path-filtered workflow cannot do that: when the
 # filter excludes a PR its checks stay Pending rather than passing, so a required check
 # over a filtered workflow deadlocks the pull request permanently.
 #
@@ -41,9 +41,9 @@ jobs:
 
       - name: Update the outdated fixture
         id: update
-        uses: ./update-pixi
+        uses: ./direnv/update-pixi
         with:
-          working-directory: update-pixi/test/fixture-outdated
+          working-directory: direnv/update-pixi/test/fixture-outdated
 
       - name: Assert the .envrc and the outputs
         env:
@@ -53,7 +53,7 @@ jobs:
           SUMMARY: ${{ steps.update.outputs.summary }}
         run: |
           set -euo pipefail
-          cat update-pixi/test/fixture-outdated/.envrc
+          cat direnv/update-pixi/test/fixture-outdated/.envrc
 
           # The gate a pull-request workflow hangs off, and the assertion that the rewrite
           # happened at all.
@@ -73,10 +73,10 @@ jobs:
           # template argument survived. This is what separates replacing one field from
           # rewriting the line - a regex that swallowed the rest of it would still pass
           # every other check in this job.
-          grep -qxF "use pixi $LATEST python" update-pixi/test/fixture-outdated/.envrc
+          grep -qxF "use pixi $LATEST python" direnv/update-pixi/test/fixture-outdated/.envrc
 
           # ... and the stale pin is gone rather than merely joined.
-          ! grep -q '0\.1\.0' update-pixi/test/fixture-outdated/.envrc
+          ! grep -q '0\.1\.0' direnv/update-pixi/test/fixture-outdated/.envrc
 
           # The summary is what a pull request body will say, so it has to name the
           # dependency and both versions.
@@ -91,7 +91,7 @@ jobs:
           # otherwise ride along into the pull request.
           changes="$(git status --porcelain --untracked-files=all)"
           printf 'git status:\n%s\n' "$changes"
-          test "$changes" = ' M update-pixi/test/fixture-outdated/.envrc'
+          test "$changes" = ' M direnv/update-pixi/test/fixture-outdated/.envrc'
 
   # GitHub documents `releases/latest` as a permalink, but not that it redirects to
   # /releases/tag/vX.Y.Z - the action asserts that shape and parses it. This job is what
@@ -106,9 +106,9 @@ jobs:
 
       - name: Update the outdated fixture
         id: update
-        uses: ./update-pixi
+        uses: ./direnv/update-pixi
         with:
-          working-directory: update-pixi/test/fixture-outdated
+          working-directory: direnv/update-pixi/test/fixture-outdated
 
       - name: Assert the redirect agrees with the REST API
         env:
@@ -133,15 +133,15 @@ jobs:
 
       - name: Update the outdated fixture
         id: first
-        uses: ./update-pixi
+        uses: ./direnv/update-pixi
         with:
-          working-directory: update-pixi/test/fixture-outdated
+          working-directory: direnv/update-pixi/test/fixture-outdated
 
       - name: Update it again
         id: second
-        uses: ./update-pixi
+        uses: ./direnv/update-pixi
         with:
-          working-directory: update-pixi/test/fixture-outdated
+          working-directory: direnv/update-pixi/test/fixture-outdated
 
       - name: Assert the second run changed nothing
         env:
@@ -181,9 +181,9 @@ jobs:
       - name: Run the action where no `use pixi` directive exists
         id: run
         continue-on-error: true
-        uses: ./update-pixi
+        uses: ./direnv/update-pixi
         with:
-          working-directory: update-pixi/test/fixture-no-pixi
+          working-directory: direnv/update-pixi/test/fixture-no-pixi
 
       - name: Assert the action failed and wrote nothing
         env:
@@ -212,9 +212,9 @@ jobs:
       - name: Run the action against an unpinned directive
         id: run
         continue-on-error: true
-        uses: ./update-pixi
+        uses: ./direnv/update-pixi
         with:
-          working-directory: update-pixi/test/fixture-unpinned
+          working-directory: direnv/update-pixi/test/fixture-unpinned
 
       - name: Assert the action failed and wrote nothing
         env:
@@ -243,7 +243,7 @@ jobs:
       - name: Run the action where there is no .envrc
         id: run
         continue-on-error: true
-        uses: ./update-pixi
+        uses: ./direnv/update-pixi
         with:
           working-directory: .github
 
@@ -271,7 +271,7 @@ jobs:
   # `if: always()` is load-bearing: without it this job is skipped when an upstream job
   # fails, and a skipped job reports Success, so the gate would pass precisely when it
   # should not.
-  update-pixi-tests-pass:
+  direnv-update-pixi-tests-pass:
     if: always()
     needs:
       - bump-outdated
@@ -289,6 +289,6 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$FAILED" != "false" || "$CANCELLED" != "false" ]]; then
-            echo "update-pixi tests did not all pass (failure=$FAILED cancelled=$CANCELLED)" >&2
+            echo "direnv/update-pixi tests did not all pass (failure=$FAILED cancelled=$CANCELLED)" >&2
             exit 1
           fi

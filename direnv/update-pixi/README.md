@@ -1,4 +1,4 @@
-# update-pixi
+# direnv/update-pixi
 
 Bump the [pixi](https://pixi.sh) version pinned by direnv's `use pixi` directive in an
 `.envrc` to the latest pixi release, and report what moved, so a workflow can turn it into
@@ -13,7 +13,7 @@ the workflow that opens the pull request is **not** here — see
 It is the pixi member of a family: one action per `.envrc` directive, each owning its own
 line format and its own upstream. `use fnm` and `use sdk` are not covered yet.
 
-> **Not to be confused with [`update-pixi-dependencies`](../update-pixi-dependencies/),**
+> **Not to be confused with [`update-pixi-dependencies`](../../update-pixi-dependencies/),**
 > which is the other half of the same chore from the other end. This action updates **pixi
 > itself**, in the `.envrc`. That one updates **the dependencies inside a pixi workspace**,
 > in `pixi.toml` and `pixi.lock`, using whatever pixi the job already provides. They touch
@@ -29,14 +29,14 @@ jobs:
       - uses: actions/checkout@v7
 
       # No pixi needed - this action detects a release, it does not install one.
-      - uses: TomBorglum/actions/update-pixi@v2
+      - uses: TomBorglum/actions/direnv/update-pixi@v2
         id: pixi
 
       - if: steps.pixi.outputs.changed == 'true'
         run: echo "${{ steps.pixi.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY"
 ```
 
-See the [repository README](../README.md#versioning-and-pinning) for what `@v2` means and
+See the [repository README](../../README.md#versioning-and-pinning) for what `@v2` means and
 when to pin more tightly.
 
 ## Inputs
@@ -59,7 +59,7 @@ an invitation to look upwards and update somebody else's pin.
 | `summary` | Markdown table of what moved (dependency, from, to). Empty when nothing changed. Suitable for a pull request body. |
 
 `summary` is a single-row table in the same shape
-[`update-pixi-dependencies`](../update-pixi-dependencies/) uses, so the workflow that
+[`update-pixi-dependencies`](../../update-pixi-dependencies/) uses, so the workflow that
 drives several directive actions can concatenate their summaries into one body without
 reformatting any of them:
 
@@ -155,11 +155,11 @@ an explicit `add-paths`, and a `dry-run` input so the workflow's own test needs 
 **It does not install pixi, or run it.** It never downloads a binary, so the pin it writes
 is not verified as solvable against your workspace — if a newer pixi wants a different
 `pixi.lock`, that surfaces as a red required check on the pull request, where
-[`setup-direnv`](../setup-direnv/)'s `use_pixi` runs `pixi install --locked`.
+[`setup-direnv`](../../setup-direnv/)'s `use_pixi` runs `pixi install --locked`.
 
 **It does not compare version ordering.** The pin is rewritten whenever it differs from
 what `releases/latest` reports, which is what
-[`update-direnv.yml`](../.github/workflows/update-direnv.yml) does for direnv. Worth
+[`update-direnv.yml`](../../.github/workflows/update-direnv.yml) does for direnv. Worth
 knowing why that is a choice: GitHub orders "latest" by `created_at` — the date of the
 *commit* the tag points at — so a patch released today from an older line could in
 principle outrank a higher version and move a pin backwards. pixi has never done it (every
@@ -172,8 +172,8 @@ outputs describing it.
 
 ## Tests
 
-[`.github/workflows/update-pixi-test.yml`](../.github/workflows/update-pixi-test.yml) runs
-on every pull request, aggregated into the `update-pixi-tests-pass` required check. It
+[`.github/workflows/direnv-update-pixi-test.yml`](../../.github/workflows/direnv-update-pixi-test.yml) runs
+on every pull request, aggregated into the `direnv-update-pixi-tests-pass` required check. It
 updates [`test/fixture-outdated`](test/fixture-outdated/) — an `.envrc` pinned
 deliberately far behind — and asserts the whole rewritten line (so the template argument
 is proven to survive), all four outputs, and that the `.envrc` is the only file touched.
