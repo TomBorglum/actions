@@ -24,19 +24,36 @@ updates:
   # Consumer-facing actions: the ones referenced inside a published action.yml. These run
   # on *consumers'* runners, so bumping one changes what they execute and must cut a patch
   # release - hence "deps", not "ci". Dependabot only fetches a directory's own
-  # action.yml, so each action needs listing; `directories` accepts globs, so "/setup-*"
-  # would collapse several once there is more than one.
+  # action.yml, so each action needs listing - including one nested under a domain
+  # directory such as /direnv, which is an ordinary path here and needs no special
+  # handling.
+  #
+  # Listed individually rather than as "/direnv/*". `directories` does expand globs, but
+  # dependabot-core routes them through an experiment flag, and a glob that silently
+  # expands to nothing is the exact failure this entry exists to prevent: the pins stop
+  # being updated and nothing says so.
   #
   # The cooldown is the difference that matters: a "deps" bump republishes to other
   # people's workflows, so leave upstream time to withdraw a bad or compromised
   # release before it ships onward. The "ci" entry above needs none - a bad bump there
   # breaks only this repo's CI, and sooner is better for a security fix.
   #
+  # One window, not three. The semver-major/minor/patch-days keys parse fine but have
+  # no effect for github-actions: its update checker resolves a single
+  # `latest_version_tag_respecting_cooldown` and never branches on bump type, so only
+  # default-days is honoured. Setting the per-bump-type keys here would read as policy
+  # while doing nothing - worse than not having them. Same conclusion, and the same
+  # wording, as TomBorglum/workflows reached in "ci: use default-days for the Dependabot
+  # cooldown".
+  #
+  # Seven days: long enough that a withdrawn or compromised release has surfaced,
+  # short enough not to sit on a routine fix for a month.
+  #
   # The direnv version pinned in setup-direnv/install-direnv.sh is NOT covered here -
   # Dependabot cannot track a version in a shell script. update-direnv.yml does that,
   # and opens its PR with the same "deps" prefix for the same reason.
   - package-ecosystem: "github-actions"
-    directories: ["/setup-direnv", "/update-pixi-dependencies"]
+    directories: ["/setup-direnv", "/direnv/update-pixi", "/update-pixi-dependencies"]
     schedule:
       interval: "weekly"
     commit-message:
@@ -46,6 +63,4 @@ updates:
         patterns:
           - "*"
     cooldown:
-      semver-major-days: 30
-      semver-minor-days: 7
-      semver-patch-days: 3
+      default-days: 7

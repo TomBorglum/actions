@@ -1,0 +1,294 @@
+name: direnv/update-pixi test
+
+# Exercises the update-pixi composite action end to end: that it rewrites a stale
+# `use pixi <version>` pin in an .envrc, that it replaces only that one field and leaves
+# the rest of the line alone, that the version it writes really is the latest release
+# rather than merely a well-formed number, that a second run reports no change, and that
+# each of its refusals - no .envrc, no `use pixi` directive, a directive with no version -
+# fails the step rather than passing quietly.
+#
+# Two of those assertions guard things no documentation promises. GitHub documents
+# `releases/latest` as a permalink but not the shape of what it redirects TO, so
+# `redirect-matches-api` compares the action's answer against the REST API's; and
+# `bump-outdated` asserts the fixture's template argument survives, which is the whole
+# difference between replacing a field and rewriting a line.
+#
+# No pixi is installed anywhere here, unlike the update-pixi-dependencies suite: this
+# action detects a release rather than running one, so it needs no toolchain at all.
+#
+# Deliberately NOT path-filtered. These tests gate the merge via the
+# direnv-update-pixi-tests-pass job below, and a path-filtered workflow cannot do that: when the
+# filter excludes a PR its checks stay Pending rather than passing, so a required check
+# over a filtered workflow deadlocks the pull request permanently.
+#
+# No secrets are used anywhere here, so a fork pull request running this at
+# contents: read can reach nothing. Every job does reach github.com - one HTTPS HEAD for
+# the redirect, which is inherent, since detecting a release means asking the host that
+# publishes it.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bump-outdated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Update the outdated fixture
+        id: update
+        uses: ./direnv/update-pixi
+        with:
+          working-directory: direnv/update-pixi/test/fixture-outdated
+
+      - name: Assert the .envrc and the outputs
+        env:
+          CHANGED: ${{ steps.update.outputs.changed }}
+          CURRENT: ${{ steps.update.outputs.current-version }}
+          LATEST: ${{ steps.update.outputs.latest-version }}
+          SUMMARY: ${{ steps.update.outputs.summary }}
+        run: |
+          set -euo pipefail
+          cat direnv/update-pixi/test/fixture-outdated/.envrc
+
+          # The gate a pull-request workflow hangs off, and the assertion that the rewrite
+          # happened at all.
+          test "$CHANGED" = 'true'
+
+          # The version the fixture pinned, reported back. Hardcoded here on purpose: a
+          # fixture silently refreshed to the latest release would make this whole job
+          # pass by having nothing to update.
+          test "$CURRENT" = '0.1.0'
+
+          # A version the directive can actually pin. use_pixi rejects anything that is
+          # not a fully qualified X.Y.Z, so a well-formed number here is not a nicety -
+          # a bad one would break every consumer's next `direnv allow`.
+          grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' <<<"$LATEST"
+
+          # The whole line, matched exactly: the pin moved AND the trailing `python`
+          # template argument survived. This is what separates replacing one field from
+          # rewriting the line - a regex that swallowed the rest of it would still pass
+          # every other check in this job.
+          grep -qxF "use pixi $LATEST python" direnv/update-pixi/test/fixture-outdated/.envrc
+
+          # ... and the stale pin is gone rather than merely joined.
+          ! grep -q '0\.1\.0' direnv/update-pixi/test/fixture-outdated/.envrc
+
+          # The summary is what a pull request body will say, so it has to name the
+          # dependency and both versions.
+          printf 'summary:\n%s\n' "$SUMMARY"
+          grep -q 'pixi' <<<"$SUMMARY"
+          grep -q '0\.1\.0' <<<"$SUMMARY"
+          grep -q "$LATEST" <<<"$SUMMARY"
+
+          # The .envrc and nothing else. The action writes one file through a scratch copy
+          # and leaves no temporary behind in the checkout, which matters because the
+          # workflow that will drive this names `add-paths` and a stray file would
+          # otherwise ride along into the pull request.
+          changes="$(git status --porcelain --untracked-files=all)"
+          printf 'git status:\n%s\n' "$changes"
+          test "$changes" = ' M direnv/update-pixi/test/fixture-outdated/.envrc'
+
+  # GitHub documents `releases/latest` as a permalink, but not that it redirects to
+  # /releases/tag/vX.Y.Z - the action asserts that shape and parses it. This job is what
+  # notices if the redirect ever changes in a way that still parses: it compares the
+  # action's answer with the REST API's, which is the documented interface for the same
+  # fact. The API is fine to use HERE and deliberately not in the action, where it would
+  # mean a token input every caller has to remember to pass.
+  redirect-matches-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Update the outdated fixture
+        id: update
+        uses: ./direnv/update-pixi
+        with:
+          working-directory: direnv/update-pixi/test/fixture-outdated
+
+      - name: Assert the redirect agrees with the REST API
+        env:
+          # The built-in token reads any public repository; nothing here needs more.
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.update.outputs.latest-version }}
+        run: |
+          set -euo pipefail
+          api="$(gh api repos/prefix-dev/pixi/releases/latest --jq '.tag_name' | sed 's/^v//')"
+          echo "action=$LATEST  api=$api"
+          test -n "$api"
+          test "$LATEST" = "$api"
+
+  # The idempotency case, and the only deterministic way to test "no change": after the
+  # first run the fixture pins the latest release, so the second has nothing to do.
+  # Committing an already-current fixture is impossible - the version it would have to
+  # hold drifts with every pixi release.
+  no-change-on-rerun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Update the outdated fixture
+        id: first
+        uses: ./direnv/update-pixi
+        with:
+          working-directory: direnv/update-pixi/test/fixture-outdated
+
+      - name: Update it again
+        id: second
+        uses: ./direnv/update-pixi
+        with:
+          working-directory: direnv/update-pixi/test/fixture-outdated
+
+      - name: Assert the second run changed nothing
+        env:
+          FIRST: ${{ steps.first.outputs.changed }}
+          SECOND: ${{ steps.second.outputs.changed }}
+          SUMMARY: ${{ steps.second.outputs.summary }}
+          CURRENT: ${{ steps.second.outputs.current-version }}
+          LATEST: ${{ steps.second.outputs.latest-version }}
+        run: |
+          set -euo pipefail
+          test "$FIRST" = 'true'
+          test "$SECOND" = 'false'
+
+          # An empty summary beside changed=false is the contract a pull-request body
+          # relies on: there is nothing to say, and saying nothing is not the same as
+          # saying "could not summarise".
+          test -z "$SUMMARY"
+
+          # Both versions are still reported when nothing moved - a caller logging "pixi
+          # is current at X" needs them, and this is what keeps that true.
+          test "$CURRENT" = "$LATEST"
+          grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' <<<"$LATEST"
+
+  # An .envrc that pins no pixi must be an error, not a no-op. The workflow that will
+  # drive this scans for the directive before delegating, so reaching the action without
+  # one means the caller was wrong - and for someone calling the action directly, this is
+  # the only thing that distinguishes a mistyped working-directory from "already current".
+  #
+  # The fixture also carries a commented-out `# use pixi 0.70.0`, so this job doubles as
+  # the assertion that a comment is not matched: an action that stepped over the `#` would
+  # find a pin here and go green.
+  missing-directive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run the action where no `use pixi` directive exists
+        id: run
+        continue-on-error: true
+        uses: ./direnv/update-pixi
+        with:
+          working-directory: direnv/update-pixi/test/fixture-no-pixi
+
+      - name: Assert the action failed and wrote nothing
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected an .envrc with no \`use pixi\` directive to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
+          # A refusal must leave the checkout alone, including the commented line it
+          # declined to match.
+          if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+            echo "the refused run modified the checkout:" >&2
+            git status --porcelain --untracked-files=all >&2
+            exit 1
+          fi
+
+  # `use pixi` with no version. use_pixi fails on it too, so the .envrc does not load
+  # today: the action must report that rather than invent a pin for it.
+  unpinned-directive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run the action against an unpinned directive
+        id: run
+        continue-on-error: true
+        uses: ./direnv/update-pixi
+        with:
+          working-directory: direnv/update-pixi/test/fixture-unpinned
+
+      - name: Assert the action failed and wrote nothing
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected an unpinned \`use pixi\` to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+            echo "the refused run modified the checkout:" >&2
+            git status --porcelain --untracked-files=all >&2
+            exit 1
+          fi
+
+  # No .envrc at all, which is what a mis-pointed working-directory looks like. .github
+  # has none, and neither does the repository root - and unlike pixi's manifest discovery
+  # there is no parent walk here to accidentally find one, so the assertion is on the
+  # failure itself.
+  missing-envrc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run the action where there is no .envrc
+        id: run
+        continue-on-error: true
+        uses: ./direnv/update-pixi
+        with:
+          working-directory: .github
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "expected a missing .envrc to fail the action, got: $OUTCOME" >&2
+            exit 1
+          fi
+
+  # The required status check for this action, and the only job name the main-protection
+  # ruleset needs to know. Listing all six above would be six entries to keep in sync, and
+  # a renamed job would quietly stop gating; this aggregate fails closed instead.
+  #
+  # The name carries the action's prefix because a required context is matched by NAME:
+  # two workflows whose aggregates were both called `tests-pass` would leave one required
+  # context standing for two different check runs, and GitHub documents no rule for which
+  # of them it then gates on. One context per workflow, each matching exactly one job.
+  #
+  # ANY JOB ADDED ABOVE MUST BE ADDED TO needs: - a job left out runs but gates nothing.
+  #
+  # `if: always()` is load-bearing: without it this job is skipped when an upstream job
+  # fails, and a skipped job reports Success, so the gate would pass precisely when it
+  # should not.
+  direnv-update-pixi-tests-pass:
+    if: always()
+    needs:
+      - bump-outdated
+      - redirect-matches-api
+      - no-change-on-rerun
+      - missing-directive
+      - unpinned-directive
+      - missing-envrc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every job succeeded
+        env:
+          FAILED: ${{ contains(needs.*.result, 'failure') }}
+          CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
+        run: |
+          set -euo pipefail
+          if [[ "$FAILED" != "false" || "$CANCELLED" != "false" ]]; then
+            echo "direnv/update-pixi tests did not all pass (failure=$FAILED cancelled=$CANCELLED)" >&2
+            exit 1
+          fi
