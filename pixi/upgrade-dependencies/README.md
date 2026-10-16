@@ -1,4 +1,4 @@
-# update-pixi-dependencies
+# pixi/upgrade-dependencies
 
 Upgrade a [pixi](https://pixi.sh) workspace's dependencies in place — rewriting
 `pixi.toml` and `pixi.lock` — and report what moved, so a workflow can turn it into a
@@ -9,7 +9,7 @@ never bumped for you, however many other ecosystems your repository has covered.
 action is the half of the replacement that performs the upgrade; the workflow that opens
 the pull request is **not** here — see [below](#what-this-action-does-not-do).
 
-> **Not to be confused with [`update-pixi`](../direnv/update-pixi/),** which is the same chore from
+> **Not to be confused with [`direnv/upgrade-pixi`](../../direnv/upgrade-pixi/),** which is the same chore from
 > the other end. This action upgrades **the dependencies inside a workspace**, using whatever
 > pixi the job provides. That one bumps **pixi itself**, in the `use pixi <version>` line of an
 > `.envrc`. They touch no file in common and can run independently.
@@ -25,16 +25,16 @@ jobs:
 
       # This action does not install pixi. Provide one first - any step that puts pixi
       # on PATH will do.
-      - uses: TomBorglum/actions/setup-direnv@v2   # an .envrc with `use pixi <version>`
+      - uses: TomBorglum/actions/direnv/setup@v3   # an .envrc with `use pixi <version>`
 
-      - uses: TomBorglum/actions/update-pixi-dependencies@v2
+      - uses: TomBorglum/actions/pixi/upgrade-dependencies@v3
         id: upgrade
 
       - if: steps.upgrade.outputs.changed == 'true'
         run: echo "${{ steps.upgrade.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY"
 ```
 
-See the [repository README](../README.md#versioning-and-pinning) for what `@v2` means and
+See the [repository README](../../README.md#versioning-and-pinning) for what `@v3` means and
 when to pin more tightly.
 
 ## Inputs
@@ -57,7 +57,7 @@ single argument it cannot smuggle a second flag either: the worst a crafted valu
 is an argument pixi rejects, which fails the step. pixi's own error then names the values
 it accepts, which beats anything this action could say, and an allowlist here would be a
 copy of pixi's list to go stale — rejecting a valid strategy the day pixi adds one. (The
-`stub-directives` check in [`setup-direnv`](../setup-direnv/) is not the same case: that
+`stub-directives` check in [`direnv/setup`](../../direnv/setup/) is not the same case: that
 value reaches a generated function definition, which is code.)
 
 ## Outputs
@@ -130,7 +130,7 @@ pixi upgrade --no-install --pinning-strategy <strategy> --json
   that this keeps being re-checked.
 - **No package selection** — everything upgradeable is upgraded. `pixi upgrade` accepts
   `[PACKAGES]...` and `--exclude`; neither is exposed yet, and adding an optional input
-  later is not a breaking change (see [CONTRIBUTING.md](../CONTRIBUTING.md#breaking-changes)).
+  later is not a breaking change (see [CONTRIBUTING.md](../../CONTRIBUTING.md#breaking-changes)).
 
 `pixi upgrade`, not `pixi update`: `update` re-solves the lockfile *within* the existing
 constraints, which is not a dependency bump. `upgrade` rewrites the constraints in the
@@ -154,7 +154,7 @@ step with pixi's own message, never `|| true`'d into a green run.
 
 **pixi must already be on `PATH`.** This action installs none, so the version that
 performs your upgrade is the one your job pins — with
-[`setup-direnv`](../setup-direnv/) and an `.envrc` that declares `use pixi <version>`, or
+[`direnv/setup`](../../direnv/setup/) and an `.envrc` that declares `use pixi <version>`, or
 with `prefix-dev/setup-pixi` and `run-install: false`. An upgrade is the judgement of one
 particular resolver, which is a thing worth pinning rather than inheriting from a runner
 image. The version in use is echoed into the log on every run.
@@ -184,14 +184,14 @@ jobs:
       app-private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
 ```
 
-It provides pixi with [`setup-direnv`](../setup-direnv/) from the calling repository's own
+It provides pixi with [`direnv/setup`](../../direnv/setup/) from the calling repository's own
 `.envrc`, authenticates as a GitHub App (events created with `GITHUB_TOKEN` do not trigger
 the required checks on the resulting PR), and gates
 `peter-evans/create-pull-request` on this action's `changed` output — the shape
-[`update-direnv.yml`](../.github/workflows/update-direnv.yml) established, with two
+[`update-direnv.yml`](../../.github/workflows/update-direnv.yml) established, with two
 differences worth knowing if you are reading that one as a model. It sets `sign-commits`,
 which signs the commit as the App and makes the bot identity that workflow resolves by
-hand unnecessary; and it names `add-paths` explicitly, because `setup-direnv` runs
+hand unnecessary; and it names `add-paths` explicitly, because `direnv/setup` runs
 `pixi install` and the materialised environment would otherwise be committed along with
 the two files that matter.
 
@@ -200,8 +200,8 @@ checkout and three outputs describing them.
 
 ## Tests
 
-[`.github/workflows/update-pixi-dependencies-test.yml`](../.github/workflows/update-pixi-dependencies-test.yml)
-runs on every pull request, aggregated into the `update-pixi-dependencies-tests-pass`
+[`.github/workflows/pixi-upgrade-dependencies-test.yml`](../../.github/workflows/pixi-upgrade-dependencies-test.yml)
+runs on every pull request, aggregated into the `pixi-upgrade-dependencies-tests-pass`
 required check. It upgrades
 [`test/fixture-outdated`](test/fixture-outdated/) — a workspace pinned to deliberately
 stale versions — and asserts the manifest, the lockfile, the absence of an environment and

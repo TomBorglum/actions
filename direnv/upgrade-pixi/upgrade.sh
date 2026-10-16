@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# The whole of the update-pixi composite action. Run as a step inside a consumer's job, so
+# The whole of the direnv/upgrade-pixi composite action. Run as a step inside a consumer's job, so
 # every failure path below exits non-zero deliberately: this action exists to produce a
 # version bump, and a green run that silently bumped nothing is the one outcome worse than
 # a red one.
@@ -40,7 +40,7 @@ DIRECTIVE_RE='^([[:space:]]*use[[:space:]]+pixi[[:space:]]+)([^[:space:]]+)(.*)$
 UNPINNED_RE='^[[:space:]]*use[[:space:]]+pixi[[:space:]]*$'
 
 if [[ ! -f .envrc ]]; then
-  echo "update-pixi: no .envrc in $(pwd)" >&2
+  echo "direnv/upgrade-pixi: no .envrc in $(pwd)" >&2
   exit 1
 fi
 
@@ -67,7 +67,7 @@ done < .envrc
 total=$((pinned + unpinned))
 if ((total == 0)); then
   cat >&2 <<'MSG'
-update-pixi: no `use pixi <version>` directive in .envrc.
+direnv/upgrade-pixi: no `use pixi <version>` directive in .envrc.
 This action updates the pixi version pinned by direnv's `use pixi` directive. The .envrc
 in the directory it was pointed at declares none, which usually means working-directory
 is wrong. It reads only the documented dispatch form:
@@ -79,20 +79,20 @@ MSG
   exit 1
 fi
 if ((total > 1)); then
-  echo "update-pixi: .envrc declares $total \`use pixi\` directives; which one is the pin is ambiguous" >&2
+  echo "direnv/upgrade-pixi: .envrc declares $total \`use pixi\` directives; which one is the pin is ambiguous" >&2
   exit 1
 fi
 if ((unpinned == 1)); then
-  echo "update-pixi: the \`use pixi\` directive on line $at_line of .envrc pins no version" >&2
+  echo "direnv/upgrade-pixi: the \`use pixi\` directive on line $at_line of .envrc pins no version" >&2
   echo "        a version is required, so there is nothing to update here: use pixi <version> [template]" >&2
   exit 1
 fi
 if [[ ! "$current" =~ $SEMVER_RE ]]; then
-  echo "update-pixi: line $at_line of .envrc pins '$current', which is not a fully qualified X.Y.Z" >&2
+  echo "direnv/upgrade-pixi: line $at_line of .envrc pins '$current', which is not a fully qualified X.Y.Z" >&2
   echo "        a partial pin is rejected by the directive, so this .envrc does not load today - fix the pin rather than bumping it" >&2
   exit 1
 fi
-echo "update-pixi: .envrc pins pixi $current (line $at_line) in $(pwd)"
+echo "direnv/upgrade-pixi: .envrc pins pixi $current (line $at_line) in $(pwd)"
 
 # Detection, not installation: one HTTPS request that downloads no payload. -I makes it a
 # HEAD, -L follows the redirect GitHub answers with, and %{url_effective} reports where it
@@ -101,7 +101,7 @@ echo "update-pixi: .envrc pins pixi $current (line $at_line) in $(pwd)"
 # --proto '=https' --tlsv1.2 pins the transfer to HTTPS/TLS 1.2+ (no plaintext redirects).
 url=''
 if ! url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' --proto '=https' --tlsv1.2 "$LATEST_URL")"; then
-  echo "update-pixi: could not resolve $LATEST_URL" >&2
+  echo "direnv/upgrade-pixi: could not resolve $LATEST_URL" >&2
   exit 1
 fi
 
@@ -109,16 +109,16 @@ fi
 # So assert it, rather than parsing hopefully: if GitHub ever lands somewhere else, this
 # fails loudly instead of writing a corrupt pin into an .envrc.
 if [[ "$url" != "$TAG_PREFIX"* ]]; then
-  echo "update-pixi: $LATEST_URL redirected to an unexpected target: $url" >&2
+  echo "direnv/upgrade-pixi: $LATEST_URL redirected to an unexpected target: $url" >&2
   exit 1
 fi
 tag="${url#"$TAG_PREFIX"}"
 latest="${tag#v}"
 if [[ ! "$latest" =~ $SEMVER_RE ]]; then
-  echo "update-pixi: '$tag' is not a version this directive can pin (expected vX.Y.Z)" >&2
+  echo "direnv/upgrade-pixi: '$tag' is not a version this directive can pin (expected vX.Y.Z)" >&2
   exit 1
 fi
-echo "update-pixi: releases/latest reports pixi $latest"
+echo "direnv/upgrade-pixi: releases/latest reports pixi $latest"
 
 changed=false
 if [[ "$current" != "$latest" ]]; then
@@ -132,7 +132,7 @@ fi
 # has never done that - every release to date is monotonic in both version and commit date
 # - and a downgrade would still arrive as a reviewable pull request, not a silent commit.
 if [[ "$changed" == true ]]; then
-  work="$(mktemp -d "${RUNNER_TEMP:-/tmp}/update-pixi.XXXXXX")"
+  work="$(mktemp -d "${RUNNER_TEMP:-/tmp}/direnv-upgrade-pixi.XXXXXX")"
   trap 'rm -rf "$work"' EXIT
   new="$work/envrc.new"
 
@@ -166,14 +166,14 @@ if [[ "$changed" == true ]]; then
 fi
 
 # The one row a pull request body needs, in the same table shape
-# update-pixi-dependencies' summary uses - so the workflow that will drive several of
+# pixi/upgrade-dependencies' summary uses - so the workflow that will drive several of
 # these directive actions can concatenate their summaries into one body.
 summary=''
 if [[ "$changed" == true ]]; then
   summary="| Dependency | From | To |"$'\n'"| --- | --- | --- |"$'\n'"| \`pixi\` | \`$current\` | \`$latest\` |"
 fi
 
-echo "update-pixi: changed=$changed"
+echo "direnv/upgrade-pixi: changed=$changed"
 if [[ -n "$summary" ]]; then
   echo "$summary"
 fi

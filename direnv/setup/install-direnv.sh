@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Installs direnv on a GitHub Actions runner for the setup-direnv composite action.
+# Installs direnv on a GitHub Actions runner for the direnv/setup composite action.
 # Exits 0, not non-zero, when direnv is already present: this runs as a step inside a
 # consumer's job, where any non-zero exit fails that step.
 if command -v direnv >/dev/null 2>&1; then

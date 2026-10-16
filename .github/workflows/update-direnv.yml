@@ -1,9 +1,9 @@
 name: Update direnv
 
-# Maintains the direnv version pinned in the setup-direnv composite action. Dependabot
+# Maintains the direnv version pinned in the direnv/setup composite action. Dependabot
 # can't track a version pinned in a shell script, and wouldn't refresh the embedded
 # checksums anyway. This job does both, then opens a PR that goes through the normal
-# setup-direnv-tests-pass + SonarCloud gates and branch rules before merge.
+# direnv-setup-tests-pass + SonarCloud gates and branch rules before merge.
 #
 # Internal machinery: it lives under .github/workflows/, which is never published, so a
 # consumer of @v1 never fetches or runs it. What it *edits* is published, which is what
@@ -56,7 +56,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          script="setup-direnv/install-direnv.sh"
+          script="direnv/setup/install-direnv.sh"
 
           current="$(grep -oP '^VERSION=\K.*' "$script")"
           latest="$(gh api repos/direnv/direnv/releases/latest --jq '.tag_name' | sed 's/^v//')"
@@ -121,15 +121,15 @@ jobs:
           commit-message: "deps: bump direnv to v${{ steps.check.outputs.latest }}"
           title: "deps: bump direnv to v${{ steps.check.outputs.latest }}"
           body: |
-            Automated update of the direnv used by the `setup-direnv` action to
+            Automated update of the direnv used by the `direnv/setup` action to
             **v${{ steps.check.outputs.latest }}**.
 
             `VERSION` and both per-arch `SHA256` values in
-            `setup-direnv/install-direnv.sh` were refreshed by hashing the release
-            binaries (direnv ships no `checksums.txt`). The setup-direnv test workflow
+            `direnv/setup/install-direnv.sh` were refreshed by hashing the release
+            binaries (direnv ships no `checksums.txt`). The direnv/setup test workflow
             runs on every pull request, so the new version is exercised end to end -
             `install-arm64` is the only job anywhere that verifies the `arm64` sum.
-            `setup-direnv-tests-pass` and the SonarCloud gate must both be green before
+            `direnv-setup-tests-pass` and the SonarCloud gate must both be green before
             merge.
 
             Merging this cuts a patch release, which is how the new direnv reaches

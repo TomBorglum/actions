@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# The whole of the update-pixi-dependencies composite action. Run as a step inside a
+# The whole of the pixi/upgrade-dependencies composite action. Run as a step inside a
 # consumer's job, so every failure path below exits non-zero deliberately: this action
 # exists to produce a dependency bump, and a green run that silently bumped nothing is
 # the one outcome worse than a red one.
@@ -17,18 +17,18 @@ set -euo pipefail
 # providing one rather than just reporting an absence.
 if ! command -v pixi >/dev/null 2>&1; then
   cat >&2 <<'MSG'
-update-pixi-dependencies: pixi is not on PATH.
+pixi/upgrade-dependencies: pixi is not on PATH.
 This action upgrades a workspace with the pixi the job already provides; it installs
 none itself. Add a step that provides one before this action, for example:
 
-  - uses: TomBorglum/actions/setup-direnv@v2   # with `use pixi <version>` in the .envrc
+  - uses: TomBorglum/actions/direnv/setup@v3   # with `use pixi <version>` in the .envrc
   - uses: prefix-dev/setup-pixi@<sha>          # with run-install: false
 MSG
   exit 1
 fi
 # Log the version: every upgrade this action performs is the judgement of one particular
 # pixi resolver, so a run that produced a surprising bump has to be attributable to one.
-echo "update-pixi-dependencies: using $(pixi --version) in $(pwd)"
+echo "pixi/upgrade-dependencies: using $(pixi --version) in $(pwd)"
 
 # A missing manifest is a hard error, and the test is load-bearing beyond its message:
 # pixi's manifest discovery walks PARENT directories, so without it a working-directory
@@ -38,7 +38,7 @@ echo "update-pixi-dependencies: using $(pixi --version) in $(pwd)"
 # pixi.toml specifically, not pyproject.toml: this action's contract is a pixi.toml at
 # the root of the directory it is pointed at.
 if [[ ! -f pixi.toml ]]; then
-  echo "update-pixi-dependencies: no pixi.toml in $(pwd)" >&2
+  echo "pixi/upgrade-dependencies: no pixi.toml in $(pwd)" >&2
   exit 1
 fi
 
@@ -58,7 +58,7 @@ lock_before="$(hash_of pixi.lock)"
 # Everything intermediate lives outside the workspace. The point of --no-install is that
 # this action leaves nothing behind in the checkout but the two files it is meant to
 # rewrite, and a scratch copy of the manifest inside it would undo that.
-work="$(mktemp -d "${RUNNER_TEMP:-/tmp}/update-pixi-dependencies.XXXXXX")"
+work="$(mktemp -d "${RUNNER_TEMP:-/tmp}/pixi-upgrade-dependencies.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 cp pixi.toml "$work/pixi.toml.before"
 
@@ -80,14 +80,14 @@ cp pixi.toml "$work/pixi.toml.before"
 # crafted value achieves is an argument pixi rejects. pixi's own clap error names the
 # values it accepts, which is better than a message here could be: an allowlist would be
 # a copy of pixi's list to keep in sync, and the day pixi adds a strategy it would reject
-# a valid one. (Contrast setup-direnv's stub-directives check, which is NOT the same
+# a valid one. (Contrast direnv/setup's stub-directives check, which is NOT the same
 # case: that value reaches a generated function definition, i.e. actual code.)
 json="$work/upgrade.json"
 upgrade_status=0
 pixi upgrade --no-install --pinning-strategy "${PINNING_STRATEGY:-}" --json >"$json" || upgrade_status=$?
 cat "$json"
 if ((upgrade_status != 0)); then
-  echo "update-pixi-dependencies: pixi upgrade failed in $(pwd)" >&2
+  echo "pixi/upgrade-dependencies: pixi upgrade failed in $(pwd)" >&2
   exit 1
 fi
 
@@ -179,7 +179,7 @@ if [[ "$changed" == true ]]; then
   fi
 fi
 
-echo "update-pixi-dependencies: changed=$changed"
+echo "pixi/upgrade-dependencies: changed=$changed"
 if [[ -n "$summary" ]]; then
   echo "$summary"
 fi

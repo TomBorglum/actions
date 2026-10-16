@@ -2,9 +2,10 @@
 
 Reusable GitHub Actions, maintained in one place and released together.
 
-Each action lives in its own directory and is referenced by path. Actions sharing a
-domain are grouped under one — `direnv/` holds those that maintain what an `.envrc`
-declares — so the reference is whatever the directory listing shows:
+Each action lives in its own directory, grouped by the domain it belongs to — `direnv/`
+for the actions that install direnv and maintain what an `.envrc` declares, `pixi/` for
+those that work inside a pixi workspace. The reference is whatever the directory listing
+shows:
 
 ```yaml
 jobs:
@@ -12,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: TomBorglum/actions/setup-direnv@v2
+      - uses: TomBorglum/actions/direnv/setup@v3
         with:
           working-directory: .
 ```
@@ -21,9 +22,27 @@ jobs:
 
 | Action | Purpose |
 | --- | --- |
-| [`setup-direnv`](setup-direnv/) | Install direnv and evaluate a repository's `.envrc`, exporting the language runtimes and variables it declares to later workflow steps. |
-| [`update-pixi`](direnv/update-pixi/) | Bump the pixi version pinned by `use pixi` in an `.envrc` — updating **pixi itself**, which Dependabot has no direnv ecosystem to see. |
-| [`update-pixi-dependencies`](update-pixi-dependencies/) | Upgrade the dependencies **inside** a pixi workspace — `pixi.toml` and `pixi.lock` — and report what moved, the gap Dependabot leaves having no `pixi` ecosystem. |
+| [`direnv/setup`](direnv/setup/) | Install direnv and evaluate a repository's `.envrc`, exporting the language runtimes and variables it declares to later workflow steps. |
+| [`direnv/upgrade-pixi`](direnv/upgrade-pixi/) | Bump the pixi version pinned by `use pixi` in an `.envrc` — updating **pixi itself**, which Dependabot has no direnv ecosystem to see. |
+| [`pixi/upgrade-dependencies`](pixi/upgrade-dependencies/) | Upgrade the dependencies **inside** a pixi workspace — `pixi.toml` and `pixi.lock` — and report what moved, the gap Dependabot leaves having no `pixi` ecosystem. |
+
+### Renamed in 3.0.0
+
+Every action moved into its domain directory, and both pixi actions settled on
+`upgrade` as the verb for moving a version forward — `pixi/upgrade-dependencies`
+because that is literally what it runs, pixi's own `upgrade` rewriting the manifest and
+the lock where `update` is lock-only, and `direnv/upgrade-pixi` to match it. Update the
+path and the pin together:
+
+| Up to `@v2` | From `@v3` |
+| --- | --- |
+| `setup-direnv` | [`direnv/setup`](direnv/setup/) |
+| `update-pixi-dependencies` | [`pixi/upgrade-dependencies`](pixi/upgrade-dependencies/) |
+| `direnv/update-pixi` (never released) | [`direnv/upgrade-pixi`](direnv/upgrade-pixi/) |
+
+The old paths are gone in 3.0.0 — there is no forwarding stub, so a workflow still
+pointing at one fails to resolve an action rather than silently running old code. Stay
+on `@v2` until you edit the path.
 
 ## Versioning and pinning
 

@@ -1,10 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-# Installs pixi on a GitHub Actions runner for update-pixi-dependencies-test.yml, and
+# Installs pixi on a GitHub Actions runner for pixi-upgrade-dependencies-test.yml, and
 # puts it on $GITHUB_PATH for later steps.
 #
-# CI-only: it lives under .github/, which is never published, so no consumer of @v2 ever
+# CI-only: it lives under .github/, which is never published, so no consumer of @v3 ever
 # fetches or runs it. The action it tests installs no pixi of its own - it upgrades with
 # whatever the job provides - which is exactly why the test workflow has to provide one.
 #
@@ -53,7 +53,7 @@ curl -fsSL --proto '=https' --tlsv1.2 \
 # served from the same place as the file it describes attests to nothing.
 echo "${SHA256}  ${tarball}" | sha256sum --check --quiet
 
-# ~/.pixi/bin, matching where pixi's own installer puts it and where setup-direnv's
+# ~/.pixi/bin, matching where pixi's own installer puts it and where direnv/setup's
 # use_pixi directive caches it.
 install -d "$HOME/.pixi/bin"
 tar -xzf "$tarball" -C "$HOME/.pixi/bin" pixi

@@ -1,6 +1,6 @@
-name: update-pixi-dependencies test
+name: pixi/upgrade-dependencies test
 
-# Exercises the update-pixi-dependencies composite action end to end: that it upgrades a
+# Exercises the pixi/upgrade-dependencies composite action end to end: that it upgrades a
 # stale pixi.toml in place and rewrites the lockfile, that --pinning-strategy actually
 # reaches pixi (the constraint comes back exact, not merely changed), that feature-scoped
 # dependencies are upgraded too, that --no-install leaves no environment behind in the
@@ -15,7 +15,7 @@ name: update-pixi-dependencies test
 # changes one.
 #
 # Deliberately NOT path-filtered. These tests gate the merge via the
-# update-pixi-dependencies-tests-pass job
+# pixi-upgrade-dependencies-tests-pass job
 # below, and a path-filtered workflow cannot do that: when the filter excludes a PR its
 # checks stay Pending rather than passing, so a required check over a filtered workflow
 # deadlocks the pull request permanently.
@@ -44,12 +44,12 @@ jobs:
 
       - name: Upgrade the outdated fixture
         id: upgrade
-        uses: ./update-pixi-dependencies
+        uses: ./pixi/upgrade-dependencies
         with:
-          working-directory: update-pixi-dependencies/test/fixture-outdated
+          working-directory: pixi/upgrade-dependencies/test/fixture-outdated
 
       - name: Assert the manifest, the lockfile and the outputs
-        working-directory: update-pixi-dependencies/test/fixture-outdated
+        working-directory: pixi/upgrade-dependencies/test/fixture-outdated
         env:
           CHANGED: ${{ steps.upgrade.outputs.changed }}
           SUMMARY: ${{ steps.upgrade.outputs.summary }}
@@ -112,15 +112,15 @@ jobs:
 
       - name: Upgrade the outdated fixture
         id: first
-        uses: ./update-pixi-dependencies
+        uses: ./pixi/upgrade-dependencies
         with:
-          working-directory: update-pixi-dependencies/test/fixture-outdated
+          working-directory: pixi/upgrade-dependencies/test/fixture-outdated
 
       - name: Upgrade it again
         id: second
-        uses: ./update-pixi-dependencies
+        uses: ./pixi/upgrade-dependencies
         with:
-          working-directory: update-pixi-dependencies/test/fixture-outdated
+          working-directory: pixi/upgrade-dependencies/test/fixture-outdated
 
       - name: Assert the second run changed nothing
         env:
@@ -154,7 +154,7 @@ jobs:
       - name: Run the action where there is no pixi.toml
         id: run
         continue-on-error: true
-        uses: ./update-pixi-dependencies
+        uses: ./pixi/upgrade-dependencies
         with:
           working-directory: .github
 
@@ -179,9 +179,9 @@ jobs:
       - name: Run the action with no pixi on PATH
         id: run
         continue-on-error: true
-        uses: ./update-pixi-dependencies
+        uses: ./pixi/upgrade-dependencies
         with:
-          working-directory: update-pixi-dependencies/test/fixture-outdated
+          working-directory: pixi/upgrade-dependencies/test/fixture-outdated
 
       - name: Assert the action failed
         env:
@@ -211,9 +211,9 @@ jobs:
       - name: Run the action with an injected pinning strategy
         id: run
         continue-on-error: true
-        uses: ./update-pixi-dependencies
+        uses: ./pixi/upgrade-dependencies
         with:
-          working-directory: update-pixi-dependencies/test/fixture-outdated
+          working-directory: pixi/upgrade-dependencies/test/fixture-outdated
           pinning-strategy: 'exact-version; touch /tmp/pwned'
 
       - name: Assert the value was rejected and nothing executed
@@ -251,7 +251,7 @@ jobs:
   # `if: always()` is load-bearing: without it this job is skipped when an upstream job
   # fails, and a skipped job reports Success, so the gate would pass precisely when it
   # should not.
-  update-pixi-dependencies-tests-pass:
+  pixi-upgrade-dependencies-tests-pass:
     if: always()
     needs:
       - upgrade-outdated
@@ -268,6 +268,6 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$FAILED" != "false" || "$CANCELLED" != "false" ]]; then
-            echo "update-pixi-dependencies tests did not all pass (failure=$FAILED cancelled=$CANCELLED)" >&2
+            echo "pixi/upgrade-dependencies tests did not all pass (failure=$FAILED cancelled=$CANCELLED)" >&2
             exit 1
           fi

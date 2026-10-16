@@ -1,4 +1,4 @@
-# direnv/update-pixi
+# direnv/upgrade-pixi
 
 Bump the [pixi](https://pixi.sh) version pinned by direnv's `use pixi` directive in an
 `.envrc` to the latest pixi release, and report what moved, so a workflow can turn it into
@@ -10,7 +10,7 @@ pull request — see [below](#what-this-action-does-not-do).
 
 Its scope is one directive. No other line in the `.envrc` is read or written.
 
-> **Not to be confused with [`update-pixi-dependencies`](../../update-pixi-dependencies/),**
+> **Not to be confused with [`pixi/upgrade-dependencies`](../../pixi/upgrade-dependencies/),**
 > which is the other half of the same chore from the other end. This action updates **pixi
 > itself**, in the `.envrc`. That one updates **the dependencies inside a pixi workspace**,
 > in `pixi.toml` and `pixi.lock`, using whatever pixi the job already provides. They touch
@@ -26,14 +26,14 @@ jobs:
       - uses: actions/checkout@v7
 
       # No pixi needed - this action detects a release, it does not install one.
-      - uses: TomBorglum/actions/direnv/update-pixi@v2
+      - uses: TomBorglum/actions/direnv/upgrade-pixi@v3
         id: pixi
 
       - if: steps.pixi.outputs.changed == 'true'
         run: echo "${{ steps.pixi.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY"
 ```
 
-See the [repository README](../../README.md#versioning-and-pinning) for what `@v2` means and
+See the [repository README](../../README.md#versioning-and-pinning) for what `@v3` means and
 when to pin more tightly.
 
 ## Inputs
@@ -54,7 +54,7 @@ The working directory must contain an `.envrc`.
 | `summary` | Markdown table of what moved (dependency, from, to). Empty when nothing changed. Suitable for a pull request body. |
 
 `summary` is a single-row table in the same shape
-[`update-pixi-dependencies`](../../update-pixi-dependencies/) uses, so the workflow that
+[`pixi/upgrade-dependencies`](../../pixi/upgrade-dependencies/) uses, so the workflow that
 drives several directive actions can concatenate their summaries into one body without
 reformatting any of them:
 
@@ -158,8 +158,8 @@ outputs describing it.
 
 ## Tests
 
-[`.github/workflows/direnv-update-pixi-test.yml`](../../.github/workflows/direnv-update-pixi-test.yml) runs
-on every pull request, aggregated into the `direnv-update-pixi-tests-pass` required check. It
+[`.github/workflows/direnv-upgrade-pixi-test.yml`](../../.github/workflows/direnv-upgrade-pixi-test.yml) runs
+on every pull request, aggregated into the `direnv-upgrade-pixi-tests-pass` required check. It
 updates [`test/fixture-outdated`](test/fixture-outdated/) — an `.envrc` pinned
 deliberately far behind — and asserts the whole rewritten line (so the template argument
 is proven to survive), all four outputs, and that the `.envrc` is the only file touched.
