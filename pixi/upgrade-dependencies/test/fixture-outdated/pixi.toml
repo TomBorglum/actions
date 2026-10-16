@@ -1,4 +1,4 @@
-# A workspace deliberately pinned to stale versions, for update-pixi-dependencies-test.yml.
+# A workspace deliberately pinned to stale versions, for pixi-upgrade-dependencies-test.yml.
 # The test upgrades it in place and asserts what moved; the stale pins are what make the
 # assertions meaningful, so DO NOT refresh them - a fixture pinned to the latest versions
 # would pass the test by having nothing to do.

@@ -1,4 +1,4 @@
-# setup-direnv
+# direnv/setup
 
 Install direnv on a GitHub Actions runner, evaluate a repository's `.envrc`, and export
 everything it declares — language runtimes and plain variables alike — to **subsequent**
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: TomBorglum/actions/setup-direnv@v2
+      - uses: TomBorglum/actions/direnv/setup@v3
         with:
           working-directory: .
 
@@ -25,7 +25,7 @@ jobs:
       - run: mvn verify
 ```
 
-See the [repository README](../README.md#versioning-and-pinning) for what `@v2` means and
+See the [repository README](../../README.md#versioning-and-pinning) for what `@v3` means and
 when to pin more tightly.
 
 ## Inputs
@@ -114,7 +114,7 @@ with no Node installed and the failure surfacing several steps later, somewhere 
 This action overrides `use` to reject a directive it cannot resolve:
 
 ```
-setup-direnv: no such directive 'use fmn'. Name it in the action's stub-directives input to ignore it.
+direnv/setup: no such directive 'use fmn'. Name it in the action's stub-directives input to ignore it.
 ```
 
 It is the same reasoning behind the directives' own `exit 1`-rather-than-`return 1`
@@ -131,7 +131,7 @@ configures an editor integration, or writes a local settings file. Naming them i
 rejected by the strictness above:
 
 ```yaml
-      - uses: TomBorglum/actions/setup-direnv@v2
+      - uses: TomBorglum/actions/direnv/setup@v3
         with:
           stub-directives: sonarqube_mcp claude_env
 ```
@@ -156,7 +156,7 @@ one.
 direnv itself is installed from a **pinned** release and verified against a checksum
 recorded in [`install-direnv.sh`](install-direnv.sh), rather than taken from the runner's
 apt repositories, so the version does not float with the runner image. It is bumped by
-[`update-direnv.yml`](../.github/workflows/update-direnv.yml), which cuts a patch release
+[`update-direnv.yml`](../../.github/workflows/update-direnv.yml), which cuts a patch release
 so the new binary reaches consumers with a changelog entry naming it.
 
 ## Network egress
@@ -173,10 +173,10 @@ Reached only by the directives a given `.envrc` actually uses, always over HTTPS
 
 ## Tests
 
-[`.github/workflows/setup-direnv-test.yml`](../.github/workflows/setup-direnv-test.yml)
+[`.github/workflows/direnv-setup-test.yml`](../../.github/workflows/direnv-setup-test.yml)
 runs one job per fixture in [`test/`](test/) on every pull request, aggregated into the
-`setup-direnv-tests-pass` required check. Each job asserts in a **later** step than the action's own, so
+`direnv-setup-tests-pass` required check. Each job asserts in a **later** step than the action's own, so
 a passing run proves the cross-step export rather than a transient direnv shell.
 
 Adding a directive means adding a fixture `.envrc` that exercises it end to end — install
-plus cross-step propagation — and adding its job to `setup-direnv-tests-pass`'s `needs:`.
+plus cross-step propagation — and adding its job to `direnv-setup-tests-pass`'s `needs:`.

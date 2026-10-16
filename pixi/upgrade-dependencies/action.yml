@@ -1,4 +1,4 @@
-name: update-pixi-dependencies
+name: pixi/upgrade-dependencies
 description: >-
   Upgrade a pixi workspace's dependencies in place - rewriting pixi.toml and pixi.lock -
   and report what changed, for a workflow to turn into a pull request. Closes the gap

@@ -23,10 +23,14 @@ The first line (the *subject*) is what release-please parses. Keep it lowercase,
 in the imperative mood ("add", not "added" or "adds"), with no trailing period,
 and ideally under ~72 characters.
 
-Where a change belongs to one action, use its directory name as the scope — the last
-segment only, so a grouped action keeps a short scope:
-`fix(setup-direnv): quote the working-directory input`,
-`fix(update-pixi): match an indented directive`.
+Where a change belongs to one action, use its **full path** as the scope:
+`fix(direnv/setup): quote the working-directory input`,
+`fix(direnv/upgrade-pixi): match an indented directive`.
+
+Every action is grouped under a domain, so the last segment alone no longer identifies
+one — `fix(setup):` and `fix(upgrade-dependencies):` would each be ambiguous the moment
+a second domain grows a similarly named action. Conventional Commits puts no restriction
+on scope characters, so the slash is fine.
 
 ## Types
 
@@ -41,7 +45,7 @@ merely rides along.
 | Type | Example | Changelog section | Cuts a release? |
 | --- | --- | --- | --- |
 | `feat` | `feat: add a setup-pixi action` | Features | yes — **minor** (1.1.0) |
-| `fix` | `fix(setup-direnv): export PATH to later steps` | Bug Fixes | yes — **patch** (1.0.1) |
+| `fix` | `fix(direnv/setup): export PATH to later steps` | Bug Fixes | yes — **patch** (1.0.1) |
 | `deps` | `deps: bump actions/checkout to v7.0.1` | Dependencies | yes — **patch** (1.0.1) |
 | `perf` | `perf: skip a redundant direnv reload` | *(hidden)* | no — rides along¹ |
 | `revert` | `revert: undo the fnm pin` | *(hidden)* | no — rides along¹ |
@@ -182,24 +186,27 @@ accurate.
 
 ## Adding a new action
 
-Each action lives in its own directory and is consumed as
-`TomBorglum/actions/<path>@v1`, where `<path>` is that directory. Actions that share a
-domain are grouped under one — `direnv/` holds those maintaining what an `.envrc`
-declares, so `update-pixi` is consumed as `TomBorglum/actions/direnv/update-pixi@v1`.
-Subdirectories are addressable in a `uses:` reference, unlike a reusable workflow's, which
-GitHub resolves only at `.github/workflows/` — so the nesting costs a consumer nothing.
+Each action lives in its own directory under the domain it belongs to, and is consumed as
+`TomBorglum/actions/<path>@v1`, where `<path>` is that directory — `direnv/` for the
+actions that install direnv and maintain what an `.envrc` declares, `pixi/` for those
+that work inside a pixi workspace, so `direnv/upgrade-pixi` is consumed as
+`TomBorglum/actions/direnv/upgrade-pixi@v1`. Subdirectories are addressable in a `uses:`
+reference, unlike a reusable workflow's, which GitHub resolves only at
+`.github/workflows/` — so the nesting costs a consumer nothing.
 
 > **Decide the grouping before the first release, not after.** Renaming an action's
 > directory is a breaking change (see [above](#breaking-changes)), so an action published
-> at the top level stays there until the next major. That is why
-> [`setup-direnv`](setup-direnv/) is not under `direnv/` despite belonging to that domain:
-> it shipped before the group existed.
+> at the wrong path stays there until the next major. This is not hypothetical: `setup-direnv`
+> and `update-pixi-dependencies` both shipped before their domain directories existed, and
+> moving them to `direnv/setup` and `pixi/upgrade-dependencies` is the whole of what 3.0.0
+> contains. A new action goes under a domain directory from the start, even when it is the
+> only one there.
 
 A PR introducing one should land all of:
 
 - `<path>/action.yml`, with every third-party `uses:` pinned by SHA.
 - A test workflow, `.github/workflows/<path>-test.yml` with any `/` flattened to `-`
-  (`direnv/update-pixi` → `direnv-update-pixi-test.yml`), that exercises the action
+  (`direnv/upgrade-pixi` → `direnv-upgrade-pixi-test.yml`), that exercises the action
   end to end on `pull_request`. Test what would actually break a consumer — in
   particular that anything the action exports via `$GITHUB_PATH` or `$GITHUB_ENV` is
   visible to *subsequent* steps, not just inside the action.

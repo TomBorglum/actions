@@ -1,4 +1,4 @@
-name: setup-direnv
+name: direnv/setup
 description: >-
   Install direnv and evaluate a repository's .envrc, exporting the language
   runtimes it declares and every variable it sets to $GITHUB_PATH / $GITHUB_ENV
@@ -73,7 +73,7 @@ runs:
         # hashFiles globs relative to GITHUB_WORKSPACE; with working-directory '.' the
         # key ends in '/.envrc', which resolves. It is empty when there is no .envrc
         # (that path fails activation anyway), which is a harmless constant key.
-        key: setup-direnv-toolchains-${{ runner.os }}-${{ hashFiles(format('{0}/.envrc', inputs.working-directory)) }}
+        key: direnv-setup-toolchains-${{ runner.os }}-${{ hashFiles(format('{0}/.envrc', inputs.working-directory)) }}
 
     # Activate the .envrc: install the CI direnv directives, fail if there is no
     # .envrc, then evaluate it. Evaluating it runs each use_* directive, which installs
@@ -108,7 +108,7 @@ runs:
       run: |
         set -euo pipefail
         if [[ ! -f .envrc ]]; then
-          echo "setup-direnv: no .envrc in $(pwd)" >&2
+          echo "direnv/setup: no .envrc in $(pwd)" >&2
           exit 1
         fi
         install -d "$HOME/.config/direnv/lib"
@@ -119,7 +119,7 @@ runs:
         # in glob order, so this lands after fnm.sh/pixi.sh/sdk.sh and can therefore
         # override direnv's own `use` - and a stub below wins over a built-in directive
         # of the same name.
-        lib="$HOME/.config/direnv/lib/zz-setup-direnv.sh"
+        lib="$HOME/.config/direnv/lib/zz-direnv-setup.sh"
 
         # direnv's stdlib `use` invokes use_<name> with no check of its own, so an
         # undefined directive is a bash "command not found" that direnv does not treat
@@ -135,7 +135,7 @@ runs:
         use() {
           local cmd=$1
           if ! declare -F "use_$cmd" >/dev/null 2>&1; then
-            echo "setup-direnv: no such directive 'use $cmd'. Name it in the action's stub-directives input to ignore it." >&2
+            echo "direnv/setup: no such directive 'use $cmd'. Name it in the action's stub-directives input to ignore it." >&2
             exit 1
           fi
           log_status "using $*"
@@ -154,10 +154,10 @@ runs:
         # deliberate word-splitting; every word it yields is then checked.
         for name in $STUB_DIRECTIVES; do
           if [[ ! "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-            echo "setup-direnv: invalid stub-directives entry '$name'" >&2
+            echo "direnv/setup: invalid stub-directives entry '$name'" >&2
             exit 1
           fi
-          printf 'use_%s() {\n  echo "setup-direnv: '\''use %s $*'\'' stubbed as a no-op" >&2\n  return 0\n}\n' \
+          printf 'use_%s() {\n  echo "direnv/setup: '\''use %s $*'\'' stubbed as a no-op" >&2\n  return 0\n}\n' \
             "$name" "$name" >> "$lib"
         done
         chmod 644 "$lib"
