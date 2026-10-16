@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.0.0](https://github.com/TomBorglum/actions/compare/v2.1.0...v3.0.0) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* every action moved. `setup-direnv` is now `direnv/setup`, `update-pixi-dependencies` is now `pixi/upgrade-dependencies`, and `direnv/update-pixi` is now `direnv/upgrade-pixi`. The old paths are gone, so a workflow pinned to one fails to resolve an action rather than running old code - update the path and the pin to `@v3` together. The toolchain cache key changed from `setup-direnv-toolchains-` to `direnv-setup-toolchains-`, so the first run after upgrading repopulates the cache.
+
+### Features
+
+* add direnv/update-pixi action ([#12](https://github.com/TomBorglum/actions/issues/12)) ([8e3b31e](https://github.com/TomBorglum/actions/commit/8e3b31e8d2a5f90efcdf808e9fa966708e2b6b81))
+* group every action under its domain and name the pixi actions upgrade ([#14](https://github.com/TomBorglum/actions/issues/14)) ([4163a99](https://github.com/TomBorglum/actions/commit/4163a99288f94d64e604d2ab3e7e3d997eeddda1))
+
 ## [2.1.0](https://github.com/TomBorglum/actions/compare/v2.0.0...v2.1.0) (2026-10-15)
 
 
