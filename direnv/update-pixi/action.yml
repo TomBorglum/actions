@@ -14,9 +14,8 @@ branding:
 inputs:
   working-directory:
     description: >-
-      Directory containing the .envrc whose `use pixi <version>` directive is to be
-      updated. The .envrc in this directory and no other: unlike pixi's manifest
-      discovery, nothing here walks up to a parent.
+      Directory containing the .envrc to update. That directory and no other - the
+      action reads the .envrc it finds there and never looks in a parent.
     required: false
     default: '.'
 

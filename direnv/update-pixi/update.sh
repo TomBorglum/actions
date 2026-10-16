@@ -11,25 +11,23 @@ set -euo pipefail
 # interpolate into the step's run: body and nothing to validate (see SECURITY.md).
 #
 # What it reads is a directive, not a file format of ours: direnv's stdlib documents
-# `use <program_name> [<version>]` as a command dispatch that translates to
-# `use_<program_name> <args>`, and ~/.config/direnv/lib/pixi.sh is the use_pixi this
-# parses the calls to. Its first argument is the pinned version and its optional second is
-# a workstation template name, which is why the rewrite below replaces one field and
-# preserves the rest of the line verbatim.
+# `use <program_name> [<version>]` as a command dispatch, and the scope of this action is
+# exactly one such call - `use pixi <version> [template]`. The version is its first
+# argument; everything after it belongs to whoever wrote the .envrc, which is why the
+# rewrite below replaces one field and preserves the rest of the line verbatim.
 
-# The documented permalink, and the SAME url the thing being updated installs from:
-# pixi's install.sh does VERSION="${PIXI_VERSION:-latest}" and then builds its download
-# from "${REPOURL}/releases/latest/download/...". So a version read here is one `use pixi`
-# can install, by construction - not a second opinion that has to be reconciled with the
-# installer's. GitHub defines this "latest" as the most recent non-prerelease, non-draft
+# Where the version comes from. The requirement it has to satisfy: whatever this action
+# writes must be installable by the directive it writes it into, so the source is the one
+# that directive's own installer resolves "latest" against rather than a second opinion to
+# reconcile with it. GitHub defines "latest" as the most recent non-prerelease, non-draft
 # release, so a prerelease can never reach a pin.
 LATEST_URL='https://github.com/prefix-dev/pixi/releases/latest'
 TAG_PREFIX='https://github.com/prefix-dev/pixi/releases/tag/'
 
-# A fully qualified X.Y.Z, which is what the terminal use_pixi REQUIRES - it rejects a
-# partial pin outright, so writing anything else into an .envrc would break every
-# consumer's next `direnv allow`. Applied to the version read from the file and to the
-# version read from GitHub, for the same reason in both directions.
+# A fully qualified X.Y.Z. The directive REQUIRES one and rejects a partial pin outright,
+# so writing anything else into an .envrc would break the next `direnv allow`. Applied to
+# the version read out of the file and to the version read from upstream, for the same
+# reason in both directions.
 SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+$'
 
 # The pinned form, captured in three parts so the rewrite can put back everything it did
@@ -37,8 +35,8 @@ SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+$'
 # argument, any trailing comment, and a trailing \r if the file was last saved by a
 # Windows editor (\r is in [[:space:]], so it lands here rather than in the version).
 DIRECTIVE_RE='^([[:space:]]*use[[:space:]]+pixi[[:space:]]+)([^[:space:]]+)(.*)$'
-# `use pixi` with no version at all. Matched separately so it can be reported as the
-# distinct problem it is: use_pixi fails on it too, so the .envrc is already broken.
+# The directive with no version at all. Matched separately so it can be reported as the
+# distinct problem it is: a version is required, so such an .envrc does not load today.
 UNPINNED_RE='^[[:space:]]*use[[:space:]]+pixi[[:space:]]*$'
 
 if [[ ! -f .envrc ]]; then
@@ -47,8 +45,8 @@ if [[ ! -f .envrc ]]; then
 fi
 
 # Find the directive before touching anything. Deliberately a scan of THIS file only:
-# direnv has no parent-directory discovery for an .envrc the way pixi has for a manifest,
-# and the contract is the .envrc in the directory the action was pointed at.
+# the contract is the .envrc in the directory the action was pointed at, and nothing here
+# looks in a parent for one.
 #
 # `|| [[ -n "$line" ]]` so a final line with no newline is still read.
 pinned=0 unpinned=0 current='' lineno=0 at_line=0
@@ -86,12 +84,12 @@ if ((total > 1)); then
 fi
 if ((unpinned == 1)); then
   echo "update-pixi: the \`use pixi\` directive on line $at_line of .envrc pins no version" >&2
-  echo "        use_pixi requires one, so there is nothing to update here: use pixi <version> [template]" >&2
+  echo "        a version is required, so there is nothing to update here: use pixi <version> [template]" >&2
   exit 1
 fi
 if [[ ! "$current" =~ $SEMVER_RE ]]; then
   echo "update-pixi: line $at_line of .envrc pins '$current', which is not a fully qualified X.Y.Z" >&2
-  echo "        use_pixi rejects a partial pin, so this .envrc does not load today - fix the pin rather than bumping it" >&2
+  echo "        a partial pin is rejected by the directive, so this .envrc does not load today - fix the pin rather than bumping it" >&2
   exit 1
 fi
 echo "update-pixi: .envrc pins pixi $current (line $at_line) in $(pwd)"
@@ -127,13 +125,12 @@ if [[ "$current" != "$latest" ]]; then
   changed=true
 fi
 
-# Plain inequality, not a version-ordering comparison, which is what update-direnv.yml and
-# wsl-cloud-init's update-lazydocker.sh both do for the same job. Worth knowing why that is
-# a choice: GitHub orders "latest" by created_at - the date of the COMMIT the tag points at
-# - so a patch released today from an older line would outrank a higher version and this
-# would rewrite the pin downwards. pixi has never done it (every release to date is
-# monotonic in both version and commit date, patches following their own minor), and a
-# downgrade would still arrive as a reviewable pull request rather than a silent commit.
+# Plain inequality, not a version-ordering comparison - the same test update-direnv.yml
+# makes for the version it maintains. Worth knowing why that is a choice: GitHub orders
+# "latest" by created_at, the date of the COMMIT a tag points at, so a release cut today
+# from an older line can outrank a higher version and would move a pin backwards. Upstream
+# has never done that - every release to date is monotonic in both version and commit date
+# - and a downgrade would still arrive as a reviewable pull request, not a silent commit.
 if [[ "$changed" == true ]]; then
   work="$(mktemp -d "${RUNNER_TEMP:-/tmp}/update-pixi.XXXXXX")"
   trap 'rm -rf "$work"' EXIT

@@ -45,9 +45,9 @@ when to pin more tightly.
 | --- | --- | --- |
 | `working-directory` | `.` | Directory containing the `.envrc` to update. |
 
-The `.envrc` in **that** directory and no other. There is no parent-directory walk, unlike
-pixi's own manifest discovery — a `working-directory` holding no `.envrc` is an error, not
-an invitation to look upwards and update somebody else's pin.
+The `.envrc` in **that** directory and no other. There is no parent-directory walk: a
+`working-directory` holding no `.envrc` is an error, not an invitation to look upwards and
+update somebody else's pin.
 
 ## Outputs
 
@@ -162,10 +162,10 @@ what `releases/latest` reports, which is what
 [`update-direnv.yml`](../../.github/workflows/update-direnv.yml) does for direnv. Worth
 knowing why that is a choice: GitHub orders "latest" by `created_at` — the date of the
 *commit* the tag points at — so a patch released today from an older line could in
-principle outrank a higher version and move a pin backwards. pixi has never done it (every
-release to date is monotonic in both version and commit date, each patch following its own
-minor), and a downgrade would still arrive as a reviewable pull request rather than a
-silent commit. A `sort -V` guard can be added later without a breaking change.
+principle outrank a higher version and move a pin backwards. Upstream has never done it —
+every release to date is monotonic in both version and commit date, each patch following
+its own minor — and a downgrade would still arrive as a reviewable pull request rather than
+a silent commit. A `sort -V` guard can be added later without a breaking change.
 
 It also does not commit or push. It leaves one modified file in the checkout and four
 outputs describing it.
