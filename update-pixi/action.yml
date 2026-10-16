@@ -1,0 +1,58 @@
+name: update-pixi
+description: >-
+  Bump the pixi version pinned by direnv's `use pixi` directive in an .envrc to the latest
+  pixi release, and report what moved, for a workflow to turn into a pull request.
+  Dependabot has no direnv ecosystem, so nothing else updates that line.
+
+# Metadata only. No Marketplace listing is published, and none could be: a listing
+# requires action.yml at the repository root, which every action here deliberately
+# avoids (see CONTRIBUTING.md, "Never put an action.yml at the repository root").
+branding:
+  icon: arrow-up
+  color: blue
+
+inputs:
+  working-directory:
+    description: >-
+      Directory containing the .envrc whose `use pixi <version>` directive is to be
+      updated. The .envrc in this directory and no other: unlike pixi's manifest
+      discovery, nothing here walks up to a parent.
+    required: false
+    default: '.'
+
+outputs:
+  changed:
+    description: >-
+      'true' when the .envrc was rewritten, 'false' when it already pinned the latest
+      release. Gate a pull-request step on this.
+    value: ${{ steps.update.outputs.changed }}
+  current-version:
+    description: The pixi version the .envrc pinned before this action ran.
+    value: ${{ steps.update.outputs.current-version }}
+  latest-version:
+    description: >-
+      The latest pixi release, as resolved from github.com/prefix-dev/pixi/releases/latest.
+      Reported whether or not anything changed.
+    value: ${{ steps.update.outputs.latest-version }}
+  summary:
+    description: >-
+      Markdown table of what moved (dependency, from, to). Empty when nothing changed.
+      Suitable for a pull request body, and shaped so several directives' summaries
+      concatenate into one.
+    value: ${{ steps.update.outputs.summary }}
+
+runs:
+  using: composite
+  steps:
+    # One step, with the logic in a script rather than inline: SonarCloud's shell analyser
+    # sees a .sh file, `bash -n` can check it, and it keeps the action.yml readable. Run
+    # through `bash` because the script is mode 644, like every other script here.
+    #
+    # Nothing is interpolated into run: - the only input is the step's own
+    # working-directory, so the script reads no variables at all and there is no value for
+    # a caller to inject through (see SECURITY.md).
+    - name: Update the pinned pixi version
+      id: update
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: bash "$GITHUB_ACTION_PATH/update.sh"
