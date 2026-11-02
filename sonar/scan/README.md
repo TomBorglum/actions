@@ -116,22 +116,6 @@ paths `sonar-project.properties` names.
 **It does not support SonarQube Server.** The upstream action does, through
 `SONAR_HOST_URL`; nothing here is written or tested for it.
 
-## Migrating from a hand-rolled scan step
-
-Replace the `setup-java` step and the `SonarSource/sonarqube-scan-action` step with this
-one action, and move any remaining `-D` properties into `sonar-project.properties`. Drop
-the `java-version` the old step set: this action supplies 21 and that is the point of it.
-
-A `with:` key this action does not declare is only a warning, not an error — the runner
-reports `Unexpected input(s) 'args', valid inputs are ['sonar-token']` and carries on
-([`ActionRunner.cs`](https://github.com/actions/runner/blob/main/src/Runner.Worker/ActionRunner.cs)).
-So a leftover `args:` or `java-version:` will not fail the job, and will not do anything
-either. Delete it.
-
-The token moves from `env:` to `with:`. The action sets `SONAR_TOKEN` on the scan step
-itself, so a job-level `env: SONAR_TOKEN` is not read; passing nothing in `with:` fails the
-action at its guard rather than at SonarCloud.
-
 ## Tests
 
 **[`sonarcloud.yml`](../../.github/workflows/sonarcloud.yml) is the test that matters.** It
