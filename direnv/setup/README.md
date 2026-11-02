@@ -170,13 +170,3 @@ Reached only by the directives a given `.envrc` actually uses, always over HTTPS
 | `get.sdkman.io` and SDKMAN's own hosts | `use sdk` |
 | `fnm.vercel.app` | `use fnm` |
 | `pixi.sh` | `use pixi <version>` |
-
-## Tests
-
-[`.github/workflows/direnv-setup-test.yml`](../../.github/workflows/direnv-setup-test.yml)
-runs one job per fixture in [`test/`](test/) on every pull request, aggregated into the
-`direnv-setup-tests-pass` required check. Each job asserts in a **later** step than the action's own, so
-a passing run proves the cross-step export rather than a transient direnv shell.
-
-Adding a directive means adding a fixture `.envrc` that exercises it end to end — install
-plus cross-step propagation — and adding its job to `direnv-setup-tests-pass`'s `needs:`.

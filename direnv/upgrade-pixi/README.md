@@ -155,17 +155,3 @@ a silent commit.
 
 It also does not commit or push. It leaves one modified file in the checkout and four
 outputs describing it.
-
-## Tests
-
-[`.github/workflows/direnv-upgrade-pixi-test.yml`](../../.github/workflows/direnv-upgrade-pixi-test.yml) runs
-on every pull request, aggregated into the `direnv-upgrade-pixi-tests-pass` required check. It
-updates [`test/fixture-outdated`](test/fixture-outdated/) — an `.envrc` pinned
-deliberately far behind — and asserts the whole rewritten line (so the template argument
-is proven to survive), all four outputs, and that the `.envrc` is the only file touched.
-It then asserts that a second run reports no change, that the version written really is the
-latest release by comparing it with the REST API's answer, and that each of the refusals
-above fails the step while leaving the checkout clean.
-
-**Do not refresh the fixture's pin.** A fixture pinned to the latest release would make the
-whole suite pass by having nothing to update.

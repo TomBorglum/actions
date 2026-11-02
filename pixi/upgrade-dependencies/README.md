@@ -197,23 +197,3 @@ the two files that matter.
 
 It also does not commit, push, or run `pixi install`. It leaves two modified files in the
 checkout and three outputs describing them.
-
-## Tests
-
-[`.github/workflows/pixi-upgrade-dependencies-test.yml`](../../.github/workflows/pixi-upgrade-dependencies-test.yml)
-runs on every pull request, aggregated into the `pixi-upgrade-dependencies-tests-pass`
-required check. It upgrades
-[`test/fixture-outdated`](test/fixture-outdated/) — a workspace pinned to deliberately
-stale versions — and asserts the manifest, the lockfile, the absence of an environment and
-all three outputs, then asserts that a second run reports no change and that each of the
-three refusals above fails the step.
-
-Three of those assertions guard behaviour pixi's reference pages do not document, and were
-verified by hand against a real pixi: that `--json` still **writes** the manifest (its
-v0.68 reference describes `--json` as previewing upgrades "without modifying files"), that
-`--pinning-strategy` is accepted and honoured by `upgrade` (it is documented on `pixi exec`
-and `pixi global update`), and that a bare upgrade covers feature-scoped dependencies. Each
-has a test whose only job is to notice if a future pixi changes it.
-
-**Do not refresh the fixture's pins.** A fixture pinned to the latest versions would make
-the whole suite pass by having nothing to upgrade.
