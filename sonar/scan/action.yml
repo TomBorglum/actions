@@ -1,0 +1,86 @@
+name: sonar/scan
+description: >-
+  Run a SonarQube Cloud scan on a JDK this action sets up, with the scanner's own JRE
+  provisioning disabled. Centralises the Java version SonarSource requires, which the
+  scanner enforces whenever provisioning is skipped.
+
+# Metadata only. No Marketplace listing is published, and none could be: a listing
+# requires action.yml at the repository root, which every action here deliberately
+# avoids (see CONTRIBUTING.md, "Never put an action.yml at the repository root").
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  sonar-token:
+    description: >-
+      SonarCloud token. Pass the repository's SONAR_TOKEN secret. Required and passed
+      explicitly because the `secrets` context is unavailable inside a composite action.
+    required: true
+  java-version:
+    description: >-
+      Java version the scanner itself runs on - not a version being analysed, and
+      unrelated to any JDK your build needs. Tracks the floor SonarSource enforces, 21
+      since 2026-07-20. Temurin is pre-installed on GitHub-hosted Ubuntu images, so the
+      default resolves without a download.
+    required: false
+    default: '21'
+  args:
+    description: >-
+      Extra scanner arguments, appended after this action's own. Later arguments win, so
+      this can override what the upstream action sets, `-Dsonar.projectBaseDir` included.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # GitHub does not enforce `required: true` for a composite action's inputs - it is
+    # documentation, checked by nothing. Without this guard an unset or misspelled secret
+    # reaches the scanner as an empty string and surfaces as an authentication error from
+    # SonarCloud, which reads as a credentials problem rather than a workflow one.
+    #
+    # Read through env rather than interpolated into run:, so no caller value is ever
+    # substituted into the script (see SECURITY.md).
+    #
+    # NEVER write the secrets context's expression form anywhere in this file, comments
+    # and descriptions included. The runner evaluates every ${} expression in a manifest
+    # wherever it appears, and that context does not exist in a composite action, so one
+    # mentioned in prose fails the whole action to load rather than reading as an example.
+    - name: Require a token
+      shell: bash
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+      run: |
+        set -euo pipefail
+        if [[ -z "${SONAR_TOKEN:-}" ]]; then
+          echo "sonar/scan: sonar-token is empty - pass the SONAR_TOKEN secret." >&2
+          exit 1
+        fi
+
+    # Supplying the JDK is what lets the scan skip JRE provisioning below. Temurin is in
+    # the hosted image's tool cache, so this resolves in about a second and downloads
+    # nothing; auto-provisioning instead fetches a JRE into ~/.sonar/cache, which is
+    # ephemeral on a hosted runner and so re-downloaded on every single run.
+    #
+    # This sets JAVA_HOME for the remainder of the caller's job, not just this action.
+    # Call the action after any step that needs a different JDK.
+    - name: Set up JDK
+      uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    # skipJreProvisioning is what makes the JDK above the one the scan runs on, and is
+    # also what makes java-version load-bearing: with provisioning on, the scanner would
+    # ignore that JDK and the Java floor could never fail a build.
+    #
+    # inputs.args reaches a `with:` key rather than a shell `run:`, so there is no
+    # command substitution for a caller to inject through (see SECURITY.md). It is still
+    # scanner configuration chosen by the caller.
+    - name: SonarQube Cloud Scan
+      uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
+      with:
+        args: -Dsonar.scanner.skipJreProvisioning=true ${{ inputs.args }}
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
