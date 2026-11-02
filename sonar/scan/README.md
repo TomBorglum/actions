@@ -1,13 +1,14 @@
 # sonar/scan
 
-Run a [SonarQube Cloud](https://sonarcloud.io) scan on a JDK this action sets up, with the
+Run a [SonarQube Cloud](https://sonarcloud.io) scan on a JDK this action supplies, with the
 scanner's own JRE provisioning disabled.
 
-**The Java version is the point of this action.** With JRE provisioning skipped, the
-scanner runs on the JDK the workflow supplies and enforces its own minimum against it.
-SonarSource raised that minimum to 21 on 2026-07-20, and a scanner CLI bump can raise it
-again. Pinning it here means the next raise is one edit in this repository rather than one
-in every repository that scans.
+**The Java version is the point of this action, and it is not an input.** With JRE
+provisioning skipped, the scanner runs on the JDK the workflow supplies and enforces its
+own minimum against it. SonarSource raised that minimum to 21 on 2026-07-20, and a scanner
+CLI bump can raise it again. Fixing it here means the next raise is one edit in this
+repository rather than one in every repository that scans — which does not work if a
+consumer can choose the version.
 
 ## Usage
 
@@ -48,8 +49,12 @@ those steps wrote would not exist for it to read.
 | Input | Default | Description |
 | --- | --- | --- |
 | `sonar-token` | *(required)* | SonarCloud token, normally `${{ secrets.SONAR_TOKEN }}`. |
-| `java-version` | `21` | Java version the **scanner** runs on. Not a version being analysed. |
-| `args` | *(empty)* | Extra scanner arguments, appended after this action's own. |
+
+That is the whole interface. There is no Java version input and no scanner argument
+passthrough: either one hands a consumer the decision this action exists to make for them.
+A future need becomes a named input of its own, which is not a breaking change
+([CONTRIBUTING.md](../../CONTRIBUTING.md#breaking-changes)) — removing one is, which is why
+the interface ships narrow in the action's first release.
 
 `sonar-token` is an input rather than an environment variable because **the `secrets`
 context is unavailable inside a composite action** — GitHub withholds it deliberately, so
@@ -58,16 +63,14 @@ than letting it reach the scanner, where it would surface as a SonarCloud creden
 error instead of a workflow one. `required: true` alone would not do that: GitHub does not
 enforce it for a composite action's inputs.
 
-`args` is appended last and later scanner arguments win, so it can override what the
-upstream action sets, including `-Dsonar.projectBaseDir`.
-
 ## What the action runs
 
 ```yaml
-- uses: actions/setup-java@... # temurin, ${{ inputs.java-version }}
+- run: bash "$GITHUB_ACTION_PATH/require-token.sh"
+- uses: actions/setup-java@... # temurin, 21
 - uses: SonarSource/sonarqube-scan-action@...
   with:
-    args: -Dsonar.scanner.skipJreProvisioning=true ${{ inputs.args }}
+    args: -Dsonar.scanner.skipJreProvisioning=true
 ```
 
 ### Why provisioning is skipped
@@ -103,23 +106,12 @@ commits.
 
 **It does not configure the analysis.** `sonar-project.properties` stays in your
 repository: the project key, the organization, the source and test roots, and the coverage
-report paths are all per-project and none of them belong here.
+report paths are all per-project and none of them belong here. That file is also where a
+per-project scanner property goes now that there is no `args` input — every `-D` on a
+scanner command line has an equivalent there.
 
 **It does not produce coverage.** It only reads the reports your own steps wrote, at the
 paths `sonar-project.properties` names.
 
 **It does not support SonarQube Server.** The upstream action does, through
 `SONAR_HOST_URL`; nothing here is written or tested for it.
-
-## Tests
-
-[`.github/workflows/sonar-scan-test.yml`](../../.github/workflows/sonar-scan-test.yml)
-runs on every pull request, aggregated into the `sonar-scan-tests-pass` required check. It
-asserts that a step *after* the action sees the JDK the action set up — the regression that
-broke three repositories at `sonarqube-scan-action` 8.4.0 — that `java-version` selects it,
-and that an empty `sonar-token` fails the action.
-
-Those jobs perform **no analysis**: `SONAR_HOST_URL` points at the discard port on
-localhost, so nothing leaves the runner and no token is needed. An actual scan is covered
-by [`sonarcloud.yml`](../../.github/workflows/sonarcloud.yml), which runs this action
-against this repository on every pull request.

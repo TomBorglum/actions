@@ -1,24 +1,24 @@
 name: sonar/scan test
 
-# Exercises the sonar/scan composite action: that the JDK it sets up is the one later
-# steps in the caller's job see, that `java-version` really selects it, and that an empty
-# `sonar-token` fails loudly instead of reaching the scanner as an empty string.
+# Exercises the sonar/scan composite action's token guard. That is the whole of what this
+# workflow can assert offline.
 #
-# The JDK assertion is the point of this suite. It is the exact regression that broke
-# three repositories at sonarqube-scan-action 8.4.0: the bundled SonarScanner CLI raised
-# its Java floor to 21, and because these workflows skip JRE provisioning the scanner
-# enforces that floor against the JDK the workflow supplies. A green `java -version` here
-# is what says the action still supplies a JDK the scanner will accept.
+# It does NOT test the Java version, and no job here runs an analysis. With JRE
+# provisioning skipped the scanner enforces its own floor against the JDK the action
+# supplies, and only a real scan evaluates that. sonarcloud.yml is therefore the acceptance
+# test: it runs this same action against this repository on every pull request with a real
+# token, and it is what fails when SonarSource raises the floor again - as happened at
+# sonarqube-scan-action 8.4.0, when the bundled SonarScanner CLI moved to 21 and broke three
+# repositories. An offline assertion on `java -version` cannot do that job: it reports green
+# whatever the scanner would have made of that JDK.
 #
-# No analysis is performed. SONAR_HOST_URL points every job at the discard port on
-# localhost, so the scanner's first call fails to connect and nothing leaves the runner -
-# no token is needed, no SonarCloud project is written to, and a fork pull request can
-# reach nothing. The scan step is therefore expected to fail, which is why the jobs that
-# assert on the JDK carry continue-on-error and assert afterwards.
+# SONAR_HOST_URL points every job at the discard port on localhost, so the scanner's first
+# call fails to connect and nothing leaves the runner - no token is needed, no SonarCloud
+# project is written to, and a fork pull request can reach nothing.
 #
-# End-to-end coverage of an actual scan comes from sonarcloud.yml instead, which runs this
-# same action against this repository on every pull request. Proving the scanner's
-# behaviour offline would need a stub SonarCloud host, which is not worth standing up.
+# That guaranteed failure is also why the token guard is tested by running its script
+# directly: an assertion on the action's outcome cannot distinguish a rejected token from
+# the connection failure that follows a good one.
 #
 # Deliberately NOT path-filtered. These tests gate the merge via the
 # sonar-scan-tests-pass job below, and a path-filtered workflow cannot do that: when the
@@ -39,72 +39,52 @@ env:
   SONAR_HOST_URL: http://127.0.0.1:9
 
 jobs:
-  # The default must track the floor SonarSource enforces, 21 since 2026-07-20.
-  default-jdk:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Scan with the default JDK
-        id: scan
-        continue-on-error: true
-        uses: ./sonar/scan
-        with:
-          sonar-token: dummy-token-no-analysis-is-performed
-
-      # A SEPARATE step on purpose: this is what proves the action's JDK is visible to the
-      # rest of the caller's job, not merely inside the action. CONTRIBUTING.md names that
-      # as the thing to test, and it is what the scanner actually reads via JAVA_HOME.
-      - name: Assert later steps see JDK 21
-        run: |
-          set -euo pipefail
-          version="$(java -version 2>&1 | head -1)"
-          echo "$version"
-          if [[ "$version" != *'"21.'* ]]; then
-            echo "expected a Java 21 runtime after the action, got: $version" >&2
-            exit 1
-          fi
-          if [[ -z "${JAVA_HOME:-}" ]]; then
-            echo "JAVA_HOME was not exported to later steps" >&2
-            exit 1
-          fi
-          echo "JAVA_HOME=$JAVA_HOME"
-
-  # Proves java-version is wired through rather than decorative. 17 is deliberate: it is
-  # the version the scanner now rejects, so this also documents that the action will
-  # honour a value that cannot scan. The input exists to let a consumer move ahead of this
-  # action's default, not behind it.
-  jdk-override:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Scan with an overridden JDK
-        id: scan
-        continue-on-error: true
-        uses: ./sonar/scan
-        with:
-          sonar-token: dummy-token-no-analysis-is-performed
-          java-version: '17'
-
-      - name: Assert later steps see JDK 17
-        run: |
-          set -euo pipefail
-          version="$(java -version 2>&1 | head -1)"
-          echo "$version"
-          if [[ "$version" != *'"17.'* ]]; then
-            echo "expected a Java 17 runtime after the action, got: $version" >&2
-            exit 1
-          fi
-
   # GitHub does not enforce `required: true` for a composite action's inputs, so this
   # asserts the action's own guard. Without it an unset secret reaches the scanner as an
   # empty string and fails as a SonarCloud credentials error instead of a workflow one.
+  #
+  # The guard's script is run directly here. Asserting on the action's outcome would prove
+  # nothing on its own: the discard port fails the scan step for every token, so the
+  # action's outcome is failure either way. The step after it covers the wiring.
   token-required:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Assert the guard rejects an empty token
+        run: |
+          set -euo pipefail
+          guard=sonar/scan/require-token.sh
+          expected="sonar/scan: sonar-token is empty - pass the SONAR_TOKEN secret."
+
+          # Unset, empty and whitespace-only must all be refused; a value must pass.
+          for token in '__unset__' '' '   '; do
+            if [[ "$token" == '__unset__' ]]; then
+              set +e; stderr="$(env -u SONAR_TOKEN bash "$guard" 2>&1 >/dev/null)"; status=$?; set -e
+              label='unset'
+            else
+              set +e; stderr="$(SONAR_TOKEN="$token" bash "$guard" 2>&1 >/dev/null)"; status=$?; set -e
+              label="'$token'"
+            fi
+            if [[ "$status" -ne 1 ]]; then
+              echo "expected the guard to exit 1 for a $label token, got: $status" >&2
+              exit 1
+            fi
+            if [[ "$stderr" != *"$expected"* ]]; then
+              echo "expected the guard's message on stderr for a $label token, got: $stderr" >&2
+              exit 1
+            fi
+            echo "refused a $label token: $stderr"
+          done
+
+          if ! SONAR_TOKEN=a-token bash "$guard"; then
+            echo "the guard rejected a non-empty token" >&2
+            exit 1
+          fi
+          echo "accepted a non-empty token"
+
+      # The wiring: that action.yml actually runs the guard. Weak on its own, since the
+      # scan step would fail here anyway, so it is paired with the assertions above.
       - name: Scan with no token
         id: scan
         continue-on-error: true
@@ -125,8 +105,6 @@ jobs:
   sonar-scan-tests-pass:
     if: always()
     needs:
-      - default-jdk
-      - jdk-override
       - token-required
     runs-on: ubuntu-latest
     steps:
@@ -137,6 +115,6 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$FAILED" != "false" || "$CANCELLED" != "false" ]]; then
-            echo "sonar/scan tests did not all pass (failure=$FAILED cancelled=$CANCELLED)" >&2
+            echo "sonar/scan tests did not all pass (failed=$FAILED cancelled=$CANCELLED)" >&2
             exit 1
           fi

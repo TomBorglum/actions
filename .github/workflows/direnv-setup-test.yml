@@ -18,6 +18,11 @@ name: direnv/setup test
 #
 # No secrets are used anywhere here, so a fork pull request running this at
 # contents: read can reach nothing.
+#
+# Adding a directive to the action means adding a fixture .envrc under
+# direnv/setup/test/ that exercises it end to end - install plus cross-step propagation -
+# and adding its job to direnv-setup-tests-pass's needs: below. A job left out of needs:
+# runs but gates nothing.
 
 on:
   pull_request:

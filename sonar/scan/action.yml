@@ -1,8 +1,9 @@
 name: sonar/scan
 description: >-
-  Run a SonarQube Cloud scan on a JDK this action sets up, with the scanner's own JRE
-  provisioning disabled. Centralises the Java version SonarSource requires, which the
-  scanner enforces whenever provisioning is skipped.
+  Run a SonarQube Cloud scan on a JDK this action supplies, with the scanner's own JRE
+  provisioning disabled. Takes no Java version: centralising the version SonarSource
+  requires, which the scanner enforces whenever provisioning is skipped, is what this
+  action is for.
 
 # Metadata only. No Marketplace listing is published, and none could be: a listing
 # requires action.yml at the repository root, which every action here deliberately
@@ -11,53 +12,39 @@ branding:
   icon: shield
   color: blue
 
+# sonar-token is the only input, and new ones are added one at a time, named, when a
+# consumer actually needs them. A passthrough input is what this action exists to remove:
+# a consumer who can choose the Java version, or append scanner arguments, is back to
+# fixing their own repository the next time SonarSource raises the floor. Adding an
+# optional input later is not a breaking change (CONTRIBUTING.md, "Breaking changes");
+# removing one is, so the narrow interface comes first.
+#
+# Per-project analysis configuration belongs in the consumer's sonar-project.properties,
+# not in an argument list here. See README.md.
 inputs:
   sonar-token:
     description: >-
       SonarCloud token. Pass the repository's SONAR_TOKEN secret. Required and passed
       explicitly because the `secrets` context is unavailable inside a composite action.
     required: true
-  java-version:
-    description: >-
-      Java version the scanner itself runs on - not a version being analysed, and
-      unrelated to any JDK your build needs. Tracks the floor SonarSource enforces, 21
-      since 2026-07-20. Temurin is pre-installed on GitHub-hosted Ubuntu images, so the
-      default resolves without a download.
-    required: false
-    default: '21'
-  args:
-    description: >-
-      Extra scanner arguments, appended after this action's own. Later arguments win, so
-      this can override what the upstream action sets, `-Dsonar.projectBaseDir` included.
-    required: false
-    default: ''
 
 runs:
   using: composite
   steps:
-    # GitHub does not enforce `required: true` for a composite action's inputs - it is
-    # documentation, checked by nothing. Without this guard an unset or misspelled secret
-    # reaches the scanner as an empty string and surfaces as an authentication error from
-    # SonarCloud, which reads as a credentials problem rather than a workflow one.
-    #
-    # Read through env rather than interpolated into run:, so no caller value is ever
-    # substituted into the script (see SECURITY.md).
-    #
-    # NEVER write the secrets context's expression form anywhere in this file, comments
-    # and descriptions included. The runner evaluates every ${} expression in a manifest
-    # wherever it appears, and that context does not exist in a composite action, so one
-    # mentioned in prose fails the whole action to load rather than reading as an example.
+    # The guard lives in its own file so it can be tested without running the action -
+    # see the script's own comment, and the token-required job in
+    # .github/workflows/sonar-scan-test.yml.
     - name: Require a token
       shell: bash
       env:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
-      run: |
-        set -euo pipefail
-        if [[ -z "${SONAR_TOKEN:-}" ]]; then
-          echo "sonar/scan: sonar-token is empty - pass the SONAR_TOKEN secret." >&2
-          exit 1
-        fi
+      run: bash "$GITHUB_ACTION_PATH/require-token.sh"
 
+    # Java 21 since 2026-07-20, the floor SonarSource enforces for a scanner runtime with
+    # JRE auto-provisioning disabled. A scanner CLI bump can raise it again, and this line
+    # is then the single edit that moves every consumer - which is the whole point of the
+    # action. Deliberately not an input.
+    #
     # Supplying the JDK is what lets the scan skip JRE provisioning below. Temurin is in
     # the hosted image's tool cache, so this resolves in about a second and downloads
     # nothing; auto-provisioning instead fetches a JRE into ~/.sonar/cache, which is
@@ -69,18 +56,17 @@ runs:
       uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
       with:
         distribution: temurin
-        java-version: ${{ inputs.java-version }}
+        java-version: '21'
 
     # skipJreProvisioning is what makes the JDK above the one the scan runs on, and is
-    # also what makes java-version load-bearing: with provisioning on, the scanner would
-    # ignore that JDK and the Java floor could never fail a build.
+    # also what makes the hardcoded version load-bearing: with provisioning on, the
+    # scanner would ignore that JDK and the Java floor could never fail a build.
     #
-    # inputs.args reaches a `with:` key rather than a shell `run:`, so there is no
-    # command substitution for a caller to inject through (see SECURITY.md). It is still
-    # scanner configuration chosen by the caller.
+    # The argument list is fixed. Nothing a caller supplies is appended to it, so the flag
+    # cannot be overridden back to false.
     - name: SonarQube Cloud Scan
       uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
       with:
-        args: -Dsonar.scanner.skipJreProvisioning=true ${{ inputs.args }}
+        args: -Dsonar.scanner.skipJreProvisioning=true
       env:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
