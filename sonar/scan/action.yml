@@ -14,7 +14,7 @@ branding:
 inputs:
   sonar-token:
     description: >-
-      SonarCloud token, normally `${{ secrets.SONAR_TOKEN }}`. Required and passed
+      SonarCloud token. Pass the repository's SONAR_TOKEN secret. Required and passed
       explicitly because the `secrets` context is unavailable inside a composite action.
     required: true
   java-version:
@@ -42,6 +42,11 @@ runs:
     #
     # Read through env rather than interpolated into run:, so no caller value is ever
     # substituted into the script (see SECURITY.md).
+    #
+    # NEVER write the secrets context's expression form anywhere in this file, comments
+    # and descriptions included. The runner evaluates every ${} expression in a manifest
+    # wherever it appears, and that context does not exist in a composite action, so one
+    # mentioned in prose fails the whole action to load rather than reading as an example.
     - name: Require a token
       shell: bash
       env:
@@ -49,7 +54,7 @@ runs:
       run: |
         set -euo pipefail
         if [[ -z "${SONAR_TOKEN:-}" ]]; then
-          echo "sonar/scan: sonar-token is empty - pass \${{ secrets.SONAR_TOKEN }}." >&2
+          echo "sonar/scan: sonar-token is empty - pass the SONAR_TOKEN secret." >&2
           exit 1
         fi
 
