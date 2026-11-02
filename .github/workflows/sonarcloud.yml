@@ -19,17 +19,15 @@ jobs:
         with:
           # Full history so SonarCloud can attribute issues to the right commits.
           fetch-depth: 0
-      # Provide the JRE ourselves so the scanner doesn't query SonarCloud's API to
-      # download one at runtime (a transient point of failure). Paired with
-      # sonar.scanner.skipJreProvisioning below.
-      - name: Set up JDK
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with:
-          distribution: temurin
-          java-version: '17'
+      # The working tree's own action rather than a pinned release, so this scan doubles
+      # as the action's end-to-end test: sonar-scan-test.yml deliberately performs no
+      # analysis, and this is the only job that proves a real one still works. A change
+      # that breaks the action therefore fails on its own pull request.
+      #
+      # The JDK and the skipJreProvisioning argument now live in sonar/scan/action.yml.
+      # That is also what moves their Dependabot bumps from `ci:` to `deps:`, since a
+      # published action.yml ships to consumers where .github/workflows does not.
       - name: SonarQube Cloud Scan
-        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        uses: ./sonar/scan
         with:
-          args: -Dsonar.scanner.skipJreProvisioning=true
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
