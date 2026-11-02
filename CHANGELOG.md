@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.1.0](https://github.com/TomBorglum/actions/compare/v3.0.0...v3.1.0) (2026-11-02)
+
+
+### Features
+
+* add sonar/scan action ([#19](https://github.com/TomBorglum/actions/issues/19)) ([a2e6fca](https://github.com/TomBorglum/actions/commit/a2e6fcad23d1bb14a3cf5c3f006fe9de0c08ca23))
+* **sonar/scan:** ship a single-input interface ([#21](https://github.com/TomBorglum/actions/issues/21)) ([941d417](https://github.com/TomBorglum/actions/commit/941d4170555b2471aadd8aad41a900d573db858e))
+
 ## [3.0.0](https://github.com/TomBorglum/actions/compare/v2.1.0...v3.0.0) (2026-10-16)
 
 
