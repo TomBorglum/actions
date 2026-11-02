@@ -4,8 +4,8 @@ Reusable GitHub Actions, maintained in one place and released together.
 
 Each action lives in its own directory, grouped by the domain it belongs to — `direnv/`
 for the actions that install direnv and maintain what an `.envrc` declares, `pixi/` for
-those that work inside a pixi workspace. The reference is whatever the directory listing
-shows:
+those that work inside a pixi workspace, `sonar/` for code analysis. The reference is
+whatever the directory listing shows:
 
 ```yaml
 jobs:
@@ -25,6 +25,7 @@ jobs:
 | [`direnv/setup`](direnv/setup/) | Install direnv and evaluate a repository's `.envrc`, exporting the language runtimes and variables it declares to later workflow steps. |
 | [`direnv/upgrade-pixi`](direnv/upgrade-pixi/) | Bump the pixi version pinned by `use pixi` in an `.envrc` — updating **pixi itself**, which Dependabot has no direnv ecosystem to see. |
 | [`pixi/upgrade-dependencies`](pixi/upgrade-dependencies/) | Upgrade the dependencies **inside** a pixi workspace — `pixi.toml` and `pixi.lock` — and report what moved, the gap Dependabot leaves having no `pixi` ecosystem. |
+| [`sonar/scan`](sonar/scan/) | Run a SonarQube Cloud scan on a JDK the action sets up, with the scanner's JRE provisioning skipped — pinning the Java version SonarSource requires in one place instead of in every repository that scans. |
 
 ### Renamed in 3.0.0
 
