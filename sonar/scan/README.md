@@ -115,23 +115,3 @@ paths `sonar-project.properties` names.
 
 **It does not support SonarQube Server.** The upstream action does, through
 `SONAR_HOST_URL`; nothing here is written or tested for it.
-
-## Tests
-
-**[`sonarcloud.yml`](../../.github/workflows/sonarcloud.yml) is the test that matters.** It
-runs this action against this repository on every pull request with a real token, so it is
-the only check that proves the scanner accepts the JDK — and the only one that fails when
-SonarSource raises the floor again. An offline assertion on `java -version` cannot do
-either: it reports green whatever the scanner would have made of that JDK.
-
-[`.github/workflows/sonar-scan-test.yml`](../../.github/workflows/sonar-scan-test.yml)
-covers what can be checked without a scan, aggregated into the `sonar-scan-tests-pass`
-required check: that the token guard refuses an unset, empty or whitespace-only token with
-its own message, and that `action.yml` runs it. It performs **no analysis** —
-`SONAR_HOST_URL` points at the discard port on localhost, so nothing leaves the runner and
-no token is needed.
-
-That is also why the guard lives in `require-token.sh` and is run directly rather than
-through the action: with the host unreachable, the action fails at the scan step whatever
-token it was given, so its outcome cannot tell a rejected token from the connection failure
-that follows a good one.
