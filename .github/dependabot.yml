@@ -50,15 +50,20 @@ updates:
   # short enough not to sit on a routine fix for a month.
   #
   # The group here is named "published-actions", not "actions" like the entry above,
-  # because the two entries must not share a group name. Both are github-actions, and the
-  # cooldown below appeared to suppress a bump that only the cooldown-free entry above
-  # governs: SonarSource/sonarqube-scan-action 8.4.0, published 2026-10-27, reached two
-  # sibling repos within three days and a third at its next weekly slot, but was never
-  # offered here - and a manual "Check for updates" on 2026-11-02, day six of the seven,
-  # still produced nothing. Cooldown is
-  # documented per update entry, so that should be impossible unless two same-named
-  # groups in one ecosystem are keyed as one config and the later cooldown wins. Distinct
-  # names cost nothing: the name surfaces only in a branch name and a PR title.
+  # because two entries in one ecosystem must not share a group name: same-named groups
+  # are keyed as a single config, and a cooldown on either then applies to both. That is
+  # how the entry above - deliberately cooldown-free, so a fix to this repo's own CI
+  # lands at once - came to sit on a bump for six days. Both groups were called
+  # "actions"; SonarSource/sonarqube-scan-action 8.4.0 was published 2026-10-27 and
+  # reached two sibling repos within three days, while here the scheduled run of 10-29
+  # and a manual "Check for updates" on 11-02 each produced nothing. Renaming this group
+  # was the only change made, still inside the same seven-day window, and Dependabot
+  # opened the held-back pull request 67 seconds after it reached main.
+  #
+  # Nothing reports this. There is no error and no warning; a suppressed entry looks
+  # idle rather than blocked, which is why it took a cross-repo comparison to see at
+  # all. The name itself is free - it surfaces only in a branch name and a PR title - so
+  # keep every entry's group name distinct, however the directories are split up later.
   #
   # The direnv version pinned in direnv/setup/install-direnv.sh is NOT covered here -
   # Dependabot cannot track a version in a shell script. update-direnv.yml does that,
