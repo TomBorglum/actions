@@ -211,13 +211,29 @@ jobs:
           INPUT_AUDIENCE: sts.amazonaws.com
         run: |
           set -euo pipefail
-          out="$(bash aws/assume-role/show-claims.sh)"
 
-          # Drop the script's own header line; the rest must be the claim object.
-          claims="$(printf '%s\n' "$out" | tail -n +2)"
+          # Captured to a file rather than a variable so the two kinds of line the script
+          # writes can be separated. One of them is a workflow command: the script registers
+          # the token as a secret with ::add-mask::, which the runner consumes from a step's
+          # stdout. Redirecting stdout means the runner never saw it, so it is re-emitted
+          # first - before anything else in this job runs - or the token would be unmasked
+          # here while being masked everywhere the action is used normally.
+          bash aws/assume-role/show-claims.sh > "$RUNNER_TEMP/claims-output.txt"
+          grep '^::add-mask::' "$RUNNER_TEMP/claims-output.txt" || {
+            echo "the script registered no mask for the token" >&2
+            exit 1
+          }
+
+          # Everything that is not a workflow command is the dump as a reader sees it.
+          body="$(grep -v '^::' "$RUNNER_TEMP/claims-output.txt")"
+
+          # From the first brace, rather than by counting lines: the script prints a header
+          # first and a line count is the kind of assertion that breaks on any edit to it.
+          claims="$(printf '%s\n' "$body" | sed -n '/^{/,$p')"
           printf '%s' "$claims" | jq -e . >/dev/null
 
-          for claim in sub aud job_workflow_ref repository workflow_ref; do
+          # Claims every token carries, whatever triggered the run.
+          for claim in sub aud repository repository_owner ref workflow_ref; do
             if ! printf '%s' "$claims" | jq -e --arg c "$claim" 'has($c)' >/dev/null; then
               echo "expected the claims to include $claim" >&2
               exit 1
@@ -229,13 +245,26 @@ jobs:
             exit 1
           fi
 
-          # A JWT segment is base64url of JSON and so begins `eyJ`. Its absence anywhere in
-          # the output is the assertion that no token, and no segment of one, was printed.
-          if printf '%s' "$out" | grep -q 'eyJ'; then
-            echo "the output contains what looks like a JWT segment" >&2
+          # `job_workflow_ref` is what a trust policy conditions on for a role assumed from a
+          # reusable workflow, and this job is not one, so its presence is reported rather
+          # than asserted. The key list is printed because it is the record of what a token
+          # from this repository actually carries.
+          printf '%s' "$claims" | jq -r 'keys | join(" ")'
+          if printf '%s' "$claims" | jq -e 'has("job_workflow_ref")' >/dev/null; then
+            echo "job_workflow_ref is present on a directly-defined job"
+          else
+            echo "job_workflow_ref is absent on a directly-defined job"
+          fi
+
+          # A JWT segment is base64url of JSON and so begins `eyJ`. Its absence from the dump
+          # proper is the assertion that no token, and no segment of one, was printed. The
+          # ::add-mask:: line is excluded deliberately: carrying the token IS that line's
+          # purpose, and the runner consumes it rather than printing it.
+          if printf '%s' "$body" | grep -q 'eyJ'; then
+            echo "the dump contains what looks like a JWT segment" >&2
             exit 1
           fi
-          echo "payload decoded, no token in the output"
+          echo "payload decoded, no token in the dump"
 
   # The real exchange, against a role that can do nothing but answer GetCallerIdentity.
   assume-role:
