@@ -25,7 +25,7 @@ set -euo pipefail
 
 # Defaulted first: an unset variable would abort under `set -u` before the test below could
 # report anything useful.
-role_arn="${INPUT_ROLE_ARN:-}"
+role_arn="${INPUT_AWS_ROLE_ARN:-}"
 aws_region="${INPUT_AWS_REGION:-}"
 audience="${INPUT_AUDIENCE:-}"
 session_duration="${INPUT_SESSION_DURATION:-}"
@@ -34,7 +34,7 @@ show_claims="${INPUT_SHOW_CLAIMS:-}"
 # Whitespace is stripped for the emptiness tests: an unset secret interpolates to the empty
 # string rather than to spaces, but a value of blanks is no more usable than no value.
 if [[ -z "${role_arn//[[:space:]]/}" ]]; then
-  echo "aws/assume-role: role-arn is empty - pass the role ARN, as a secret." >&2
+  echo "aws/assume-role: aws-role-arn is empty - pass the role ARN, as a secret." >&2
   exit 1
 fi
 
@@ -45,7 +45,7 @@ fi
 # `aws[a-z-]*` rather than a literal `aws` so the aws-cn and aws-us-gov partitions are not
 # refused. The check exists to require an ARN, not to require one partition.
 if [[ ! "$role_arn" =~ ^arn:aws[a-z-]*:iam::[0-9]{12}:role/.+$ ]]; then
-  echo "aws/assume-role: role-arn must be a full IAM role ARN" \
+  echo "aws/assume-role: aws-role-arn must be a full IAM role ARN" \
        "(arn:aws:iam::<account-id>:role/<name>), not a bare role name." >&2
   exit 1
 fi

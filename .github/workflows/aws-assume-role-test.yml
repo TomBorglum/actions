@@ -55,7 +55,7 @@ jobs:
           }
 
           ok 'the default-shaped set' \
-            INPUT_ROLE_ARN='arn:aws:iam::000000000000:role/example' \
+            INPUT_AWS_ROLE_ARN='arn:aws:iam::000000000000:role/example' \
             INPUT_AWS_REGION='eu-north-1' \
             INPUT_AUDIENCE='sts.amazonaws.com' \
             INPUT_SESSION_DURATION='900' \
@@ -64,7 +64,7 @@ jobs:
 
           # The partition is not hardcoded: the check requires an ARN, not one partition.
           ok 'an aws-cn ARN' \
-            INPUT_ROLE_ARN='arn:aws-cn:iam::000000000000:role/example' \
+            INPUT_AWS_ROLE_ARN='arn:aws-cn:iam::000000000000:role/example' \
             INPUT_AWS_REGION='cn-north-1' \
             INPUT_AUDIENCE='sts.amazonaws.com' \
             INPUT_SESSION_DURATION='43200' \
@@ -102,75 +102,75 @@ jobs:
           base_url='https://example.invalid/token'
           good_arn='arn:aws:iam::000000000000:role/example'
 
-          bad 'an empty role-arn' 'role-arn is empty' \
-            INPUT_ROLE_ARN='' INPUT_AWS_REGION="$base_region" \
+          bad 'an empty aws-role-arn' 'aws-role-arn is empty' \
+            INPUT_AWS_ROLE_ARN='' INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION="$base_duration" \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
-          bad 'a whitespace-only role-arn' 'role-arn is empty' \
-            INPUT_ROLE_ARN='   ' INPUT_AWS_REGION="$base_region" \
+          bad 'a whitespace-only aws-role-arn' 'aws-role-arn is empty' \
+            INPUT_AWS_ROLE_ARN='   ' INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION="$base_duration" \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           # The case the ARN check exists for: upstream would accept this and resolve it
           # against the source account.
           bad 'a bare role name' 'must be a full IAM role ARN' \
-            INPUT_ROLE_ARN='gha-actions-oidc-test' INPUT_AWS_REGION="$base_region" \
+            INPUT_AWS_ROLE_ARN='gha-actions-oidc-test' INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION="$base_duration" \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           bad 'an ARN with an 11-digit account id' 'must be a full IAM role ARN' \
-            INPUT_ROLE_ARN='arn:aws:iam::00000000000:role/example' \
+            INPUT_AWS_ROLE_ARN='arn:aws:iam::00000000000:role/example' \
             INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION="$base_duration" \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           bad 'a user ARN' 'must be a full IAM role ARN' \
-            INPUT_ROLE_ARN='arn:aws:iam::000000000000:user/example' \
+            INPUT_AWS_ROLE_ARN='arn:aws:iam::000000000000:user/example' \
             INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION="$base_duration" \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           bad 'an uppercase region' 'aws-region must match' \
-            INPUT_ROLE_ARN="$good_arn" INPUT_AWS_REGION='EU-NORTH-1' \
+            INPUT_AWS_ROLE_ARN="$good_arn" INPUT_AWS_REGION='EU-NORTH-1' \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION="$base_duration" \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           bad 'an empty region' 'aws-region must match' \
-            INPUT_ROLE_ARN="$good_arn" INPUT_AWS_REGION='' \
+            INPUT_AWS_ROLE_ARN="$good_arn" INPUT_AWS_REGION='' \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION="$base_duration" \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           bad 'an empty audience' 'audience is empty' \
-            INPUT_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
+            INPUT_AWS_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE='' INPUT_SESSION_DURATION="$base_duration" \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           bad 'a non-numeric session-duration' 'whole number of seconds' \
-            INPUT_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
+            INPUT_AWS_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION='15m' \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           bad 'a session-duration below the AWS minimum' 'between 900 and 43200' \
-            INPUT_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
+            INPUT_AWS_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION='300' \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           bad 'a session-duration above the AWS maximum' 'between 900 and 43200' \
-            INPUT_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
+            INPUT_AWS_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION='50000' \
             INPUT_SHOW_CLAIMS="$base_claims" ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           # Anything other than true/false would read as false in the step's `if:`, which
           # would silently disable the dump rather than fail.
           bad 'a non-boolean show-claims' "show-claims must be 'true' or 'false'" \
-            INPUT_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
+            INPUT_AWS_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION="$base_duration" \
             INPUT_SHOW_CLAIMS='yes' ACTIONS_ID_TOKEN_REQUEST_URL="$base_url"
 
           # The most common misconfiguration: a caller that forgot the permission.
           bad 'a missing id-token permission' "needs 'permissions: id-token: write'" \
-            INPUT_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
+            INPUT_AWS_ROLE_ARN="$good_arn" INPUT_AWS_REGION="$base_region" \
             INPUT_AUDIENCE="$base_audience" INPUT_SESSION_DURATION="$base_duration" \
             INPUT_SHOW_CLAIMS="$base_claims"
 
@@ -251,7 +251,7 @@ jobs:
         id: assume
         uses: ./aws/assume-role
         with:
-          role-arn: ${{ secrets.AWS_OIDC_TEST_ROLE_ARN }}
+          aws-role-arn: ${{ secrets.AWS_OIDC_TEST_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Assert the three credentials came back
@@ -305,7 +305,7 @@ jobs:
         id: verbose
         uses: ./aws/assume-role
         with:
-          role-arn: ${{ secrets.AWS_OIDC_TEST_ROLE_ARN }}
+          aws-role-arn: ${{ secrets.AWS_OIDC_TEST_ROLE_ARN }}
           aws-region: us-east-1
           show-claims: 'true'
           session-duration: '1200'
@@ -337,7 +337,7 @@ jobs:
         continue-on-error: true
         uses: ./aws/assume-role
         with:
-          role-arn: arn:aws:iam::000000000000:role/aws-assume-role-test-does-not-exist
+          aws-role-arn: arn:aws:iam::000000000000:role/aws-assume-role-test-does-not-exist
           aws-region: us-east-1
 
       - name: Assert the action failed

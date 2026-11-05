@@ -3,7 +3,7 @@
 Assume an IAM role with the calling job's GitHub OIDC token and return the STS credentials
 as step outputs.
 
-**Pass `role-arn` as a secret.** The runner echoes a caller's `with:` block, so a plain
+**Pass `aws-role-arn` as a secret.** The runner echoes a caller's `with:` block, so a plain
 input publishes the AWS account id in a log that is world-readable on a public repository.
 The action masks the account id itself, but only for the steps that follow it — by then the
 caller's own echo has already happened.
@@ -25,7 +25,7 @@ jobs:
       - uses: TomBorglum/actions/aws/assume-role@v3
         id: creds
         with:
-          role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: eu-north-1
 
       - name: Read a parameter with the assumed credentials
@@ -48,7 +48,7 @@ Nothing else in the job can see them.
 
 | Input | Default | Description |
 | --- | --- | --- |
-| `role-arn` | *(required)* | The role to assume, as a full ARN. Pass it as a secret. A bare role name is refused. |
+| `aws-role-arn` | *(required)* | The role to assume, as a full ARN. Pass it as a secret. A bare role name is refused. |
 | `aws-region` | *(required)* | The region the role is assumed in. |
 | `audience` | `sts.amazonaws.com` | The OIDC audience requested, matched by the trust policy's `aud` condition. |
 | `session-duration` | `900` | Seconds the credentials stay valid, 900 to 43200. |
@@ -107,8 +107,8 @@ is registered as a secret so that even an accidental print of it is masked.
 
 | Cause | Message |
 | --- | --- |
-| `role-arn` unset or blank | `role-arn is empty - pass the role ARN, as a secret.` |
-| A bare role name, or any non-role ARN | `role-arn must be a full IAM role ARN ...` |
+| `aws-role-arn` unset or blank | `aws-role-arn is empty - pass the role ARN, as a secret.` |
+| A bare role name, or any non-role ARN | `aws-role-arn must be a full IAM role ARN ...` |
 | `aws-region` malformed | `aws-region must match ^[a-z0-9-]+$ ...` |
 | `session-duration` not a number, or outside 900–43200 | `session-duration must be ...` |
 | `show-claims` neither `true` nor `false` | `show-claims must be 'true' or 'false'.` |
@@ -131,7 +131,7 @@ which is why the first two exist as runtime checks.
 
 - Sets no environment variable in the calling job. No `AWS_*` credential is exported.
 - Writes no file and no profile. Nothing persists after the job.
-- Masks the account id parsed from `role-arn`, and the OIDC token when the dump runs.
+- Masks the account id parsed from `aws-role-arn`, and the OIDC token when the dump runs.
 - Makes one STS `AssumeRoleWithWebIdentity` call, and one GitHub token request per dump.
 
 ## What this action does not do
