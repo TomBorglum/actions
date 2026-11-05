@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.0](https://github.com/TomBorglum/actions/compare/v3.1.0...v3.2.0) (2026-11-05)
+
+
+### Features
+
+* add aws/assume-role action ([#22](https://github.com/TomBorglum/actions/issues/22)) ([8ae7326](https://github.com/TomBorglum/actions/commit/8ae73268521d5bc9f0d518bf111b4c2f4918488e))
+
 ## [3.1.0](https://github.com/TomBorglum/actions/compare/v3.0.0...v3.1.0) (2026-11-02)
 
 
