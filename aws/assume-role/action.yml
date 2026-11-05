@@ -1,0 +1,137 @@
+name: aws/assume-role
+description: >-
+  Assume an IAM role with the calling job's GitHub OIDC token and return the STS credentials
+  as step outputs. Takes no secret store and no registry: the exchange is the whole of what
+  this action does, and what the credentials are then used for belongs to the caller.
+
+# Metadata only. No Marketplace listing is published, and none could be: a listing
+# requires action.yml at the repository root, which every action here deliberately
+# avoids (see CONTRIBUTING.md, "Never put an action.yml at the repository root").
+branding:
+  icon: key
+  color: blue
+
+# Inputs describe the exchange and nothing beyond it. There is deliberately no input for a
+# secret to fetch or a service to log in to: adding one would make this action specific to
+# whichever service came first, and the exchange is the part that recurs.
+#
+# NEVER write the secrets context's expression form anywhere in this file, comments and
+# descriptions included. The runner evaluates every ${} expression in a manifest wherever
+# it appears, and that context does not exist in a composite action, so one mentioned in
+# prose fails the whole action to load rather than reading as an example. README.md is an
+# ordinary document and shows the usage.
+inputs:
+  aws-role-arn:
+    description: >-
+      The IAM role to assume, as a full ARN. A bare role name is refused - see
+      validate-inputs.sh. PASS THIS AS A SECRET: the runner echoes a caller's `with:` block,
+      so a plain input publishes the account id on every run. The action masks the account id
+      itself as well, but only for the steps that follow it.
+    required: true
+  aws-region:
+    description: >-
+      The region the role is assumed in. Spelled as the configure-aws-credentials input it
+      feeds.
+    required: true
+  audience:
+    description: >-
+      The OIDC audience requested, matched by the trust policy's `aud` condition. The default
+      is what AWS expects; an audience is percent-encoded before the token request, so the
+      forms other providers use are safe to pass.
+    required: false
+    default: sts.amazonaws.com
+  session-duration:
+    description: >-
+      Seconds the credentials remain valid, between 900 and 43200. The default is the
+      shortest AWS allows, which is the right default for a job that assumes a role to do one
+      thing.
+    required: false
+    default: '900'
+  session-name:
+    description: >-
+      The STS session name, which appears in CloudTrail. Empty resolves to
+      `<run_id>-<run_attempt>`, which identifies the run that assumed the role. Upstream
+      validates the shape.
+    required: false
+    default: ''
+  show-claims:
+    description: >-
+      Print the OIDC token's claims before the exchange. Off by default so no consumer pays
+      for a diagnostic it did not ask for; a failed assumption prints how to turn it on. Only
+      the payload is decoded - never the token.
+    required: false
+    default: 'false'
+
+# The three credentials and their expiry, and nothing else. `aws-account-id` and
+# `authenticated-arn` are upstream outputs this action deliberately does not forward: both
+# carry the account id, and upstream only populates them when credentials go to the
+# environment, which they do not here.
+outputs:
+  aws-access-key-id:
+    description: Access key id of the assumed session.
+    value: ${{ steps.creds.outputs.aws-access-key-id }}
+  aws-secret-access-key:
+    description: Secret access key of the assumed session.
+    value: ${{ steps.creds.outputs.aws-secret-access-key }}
+  aws-session-token:
+    description: Session token of the assumed session.
+    value: ${{ steps.creds.outputs.aws-session-token }}
+  aws-expiration:
+    description: When the assumed session expires.
+    value: ${{ steps.creds.outputs.aws-expiration }}
+
+runs:
+  using: composite
+  steps:
+    # FIRST, so a misconfigured caller fails before any credential handling begins. The guard
+    # lives in its own file so it can be tested without an OIDC token or an AWS account -
+    # see the script's own comment, and the input-validation job in
+    # .github/workflows/aws-assume-role-test.yml.
+    - name: Validate the inputs
+      shell: bash
+      env:
+        INPUT_AWS_ROLE_ARN: ${{ inputs.aws-role-arn }}
+        INPUT_AWS_REGION: ${{ inputs.aws-region }}
+        INPUT_AUDIENCE: ${{ inputs.audience }}
+        INPUT_SESSION_DURATION: ${{ inputs.session-duration }}
+        INPUT_SHOW_CLAIMS: ${{ inputs.show-claims }}
+      run: bash "$GITHUB_ACTION_PATH/validate-inputs.sh"
+
+    # Before any AWS call, so a trust-policy mismatch is diagnosable from the same run that
+    # hit it rather than from a second one.
+    - name: Show the OIDC token claims
+      if: inputs.show-claims == 'true'
+      shell: bash
+      env:
+        INPUT_AUDIENCE: ${{ inputs.audience }}
+      run: bash "$GITHUB_ACTION_PATH/show-claims.sh"
+
+    - name: Assume the role
+      id: creds
+      uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        role-to-assume: ${{ inputs.aws-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        audience: ${{ inputs.audience }}
+        # `||` returns the first truthy operand and an empty string is falsy, so an unset
+        # input resolves to the run that assumed the role.
+        role-session-name: ${{ inputs.session-name || format('{0}-{1}', github.run_id, github.run_attempt) }}
+        role-duration-seconds: ${{ inputs.session-duration }}
+        # Not redundant with the ARN being a secret: this covers what STS RETURNS.
+        mask-aws-account-id: true
+        # The credentials become step outputs instead of job environment, so a step that
+        # needs them has to name them and the rest of the caller's job never sees them.
+        # Upstream registers each value as a secret either way, so forwarding them through
+        # this action's outputs adds no unmasked path.
+        output-credentials: true
+        output-env-credentials: false
+
+    # What makes the quiet default affordable. Scoped to the step that actually failed:
+    # a validation failure is a different problem and must not be answered with this.
+    - name: Explain a failed assumption
+      if: failure() && steps.creds.outcome == 'failure' && inputs.show-claims != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::notice::aws/assume-role: the role was not assumed. Re-run with" \
+          "show-claims: true to print the claims the trust policy is matched against."
