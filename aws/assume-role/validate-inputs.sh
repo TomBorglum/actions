@@ -25,7 +25,7 @@ set -euo pipefail
 
 # Defaulted first: an unset variable would abort under `set -u` before the test below could
 # report anything useful.
-role_arn="${INPUT_AWS_ROLE_ARN:-}"
+aws_role_arn="${INPUT_AWS_ROLE_ARN:-}"
 aws_region="${INPUT_AWS_REGION:-}"
 audience="${INPUT_AUDIENCE:-}"
 session_duration="${INPUT_SESSION_DURATION:-}"
@@ -33,7 +33,7 @@ show_claims="${INPUT_SHOW_CLAIMS:-}"
 
 # Whitespace is stripped for the emptiness tests: an unset secret interpolates to the empty
 # string rather than to spaces, but a value of blanks is no more usable than no value.
-if [[ -z "${role_arn//[[:space:]]/}" ]]; then
+if [[ -z "${aws_role_arn//[[:space:]]/}" ]]; then
   echo "aws/assume-role: aws-role-arn is empty - pass the role ARN, as a secret." >&2
   exit 1
 fi
@@ -44,7 +44,7 @@ fi
 #
 # `aws[a-z-]*` rather than a literal `aws` so the aws-cn and aws-us-gov partitions are not
 # refused. The check exists to require an ARN, not to require one partition.
-if [[ ! "$role_arn" =~ ^arn:aws[a-z-]*:iam::[0-9]{12}:role/.+$ ]]; then
+if [[ ! "$aws_role_arn" =~ ^arn:aws[a-z-]*:iam::[0-9]{12}:role/.+$ ]]; then
   echo "aws/assume-role: aws-role-arn must be a full IAM role ARN" \
        "(arn:aws:iam::<account-id>:role/<name>), not a bare role name." >&2
   exit 1
@@ -55,9 +55,9 @@ fi
 #
 # This CANNOT cover the caller's own `with:` block, which the runner echoes before this
 # action starts. Passing the ARN as a secret remains the requirement - see README.md.
-account_id="${role_arn#*:iam::}"
-account_id="${account_id%%:*}"
-echo "::add-mask::$account_id"
+aws_account_id="${aws_role_arn#*:iam::}"
+aws_account_id="${aws_account_id%%:*}"
+echo "::add-mask::$aws_account_id"
 
 # The same shape configure-aws-credentials enforces, checked here so the failure names the
 # input rather than arriving from inside the upstream action.
