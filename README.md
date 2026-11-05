@@ -2,10 +2,10 @@
 
 Reusable GitHub Actions, maintained in one place and released together.
 
-Each action lives in its own directory, grouped by the domain it belongs to — `direnv/`
-for the actions that install direnv and maintain what an `.envrc` declares, `pixi/` for
-those that work inside a pixi workspace, `sonar/` for code analysis. The reference is
-whatever the directory listing shows:
+Each action lives in its own directory, grouped by the domain it belongs to — `aws/` for
+the actions that authenticate to AWS, `direnv/` for the actions that install direnv and
+maintain what an `.envrc` declares, `pixi/` for those that work inside a pixi workspace,
+`sonar/` for code analysis. The reference is whatever the directory listing shows:
 
 ```yaml
 jobs:
@@ -22,6 +22,7 @@ jobs:
 
 | Action | Purpose |
 | --- | --- |
+| [`aws/assume-role`](aws/assume-role/) | Assume an IAM role with the calling job's GitHub OIDC token and return the STS credentials as step outputs — the exchange on its own, with no secret store and no registry attached to it. |
 | [`direnv/setup`](direnv/setup/) | Install direnv and evaluate a repository's `.envrc`, exporting the language runtimes and variables it declares to later workflow steps. |
 | [`direnv/upgrade-pixi`](direnv/upgrade-pixi/) | Bump the pixi version pinned by `use pixi` in an `.envrc` — updating **pixi itself**, which Dependabot has no direnv ecosystem to see. |
 | [`pixi/upgrade-dependencies`](pixi/upgrade-dependencies/) | Upgrade the dependencies **inside** a pixi workspace — `pixi.toml` and `pixi.lock` — and report what moved, the gap Dependabot leaves having no `pixi` ecosystem. |
@@ -72,8 +73,15 @@ See the [changelog](CHANGELOG.md) for what each release contained, and
 
 `main` is protected by a repository ruleset: pull requests only, linear history, no
 force-pushes or deletions, and required SonarCloud and per-action test checks — with no
-bypass actors, including for maintainers. Version tags have their own ruleset making them
-immutable.
+bypass actors, including for maintainers.
+
+Version tags are governed by two tag rulesets. The first covers `refs/tags/v*` and restricts
+creations, updates, deletions and force pushes, with the release App as its only bypass
+actor: no human moves or creates a version tag, and the moving `vX` and `vX.Y` tags advance
+only because release-please does it. The second covers `refs/tags/vX.Y.Z` and restricts
+updates, deletions and force pushes with **no** bypass actor, so an exact version that exists
+cannot be moved or deleted by anyone — the App included. Correcting a mis-cut release means
+disabling that ruleset first, which is what makes `@v1.2.3` and `@<sha>` equally safe pins.
 
 Each action's tests gate its own merges. They run on every pull request and report through
 a single `<name>-tests-pass` check per action, so a red test cannot be merged around. The
