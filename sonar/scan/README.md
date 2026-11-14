@@ -1,14 +1,20 @@
 # sonar/scan
 
-Run a [SonarQube Cloud](https://sonarcloud.io) scan on a JDK this action supplies, with the
-scanner's own JRE provisioning disabled.
+Run a [SonarQube Cloud](https://sonarcloud.io) scan on a JDK at or above the version
+SonarSource requires, with the scanner's own JRE provisioning disabled.
 
-**The Java version is the point of this action, and it is not an input.** With JRE
-provisioning skipped, the scanner runs on the JDK the workflow supplies and enforces its
-own minimum against it. SonarSource raised that minimum to 21 on 2026-07-20, and a scanner
-CLI bump can raise it again. Fixing it here means the next raise is one edit in this
-repository rather than one in every repository that scans — which does not work if a
-consumer can choose the version.
+**The Java version defaults to the floor SonarSource enforces, and carrying that default
+is the point of this action.** With JRE provisioning skipped, the scanner runs on the JDK
+the workflow supplies and enforces its own minimum against it. SonarSource raised that
+minimum to 21 on 2026-07-20, and a scanner CLI bump can raise it again. Holding the
+version here means the next raise is one edit in this repository rather than one in every
+repository that scans. `java-version` overrides the default for a job whose own steps run
+on a newer JDK.
+
+A job that already has the requested feature version on `JAVA_HOME` scans on that JDK,
+whatever its distribution. A request it does not meet installs Temurin instead.
+`setup-java` resolves a request against the runner tool cache alone, so a JDK from SDKMAN
+or `apt` is invisible to it and would be shadowed by a second copy of the same version.
 
 ## Usage
 
@@ -44,17 +50,29 @@ the steps that produce coverage, in the same job and the same workspace:
 A reusable workflow could not: it runs as its own job on its own runner, so the coverage
 those steps wrote would not exist for it to read.
 
+A job that compiles Java scans on the JDK that compiled it:
+
+```yaml
+      - uses: TomBorglum/actions/direnv/setup@v3   # .envrc declares Temurin 25
+      - run: mvn -B verify
+      - uses: TomBorglum/actions/sonar/scan@v3
+        with:
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
+          java-version: '25'
+```
+
 ## Inputs
 
 | Input | Default | Description |
 | --- | --- | --- |
 | `sonar-token` | *(required)* | SonarCloud token, normally `${{ secrets.SONAR_TOKEN }}`. |
+| `java-version` | `21` | Feature version of the JDK the scan runs on. Set it to the version the rest of the job needs. |
 
-That is the whole interface. There is no Java version input and no scanner argument
-passthrough: either one hands a consumer the decision this action exists to make for them.
-A future need becomes a named input of its own, which is not a breaking change
+That is the whole interface. There is no scanner argument passthrough: it hands a consumer
+the decision this action exists to make for them. A future need becomes a named input of
+its own, which is not a breaking change
 ([CONTRIBUTING.md](../../CONTRIBUTING.md#breaking-changes)) — removing one is, which is why
-the interface ships narrow in the action's first release.
+the interface stays narrow.
 
 `sonar-token` is an input rather than an environment variable because **the `secrets`
 context is unavailable inside a composite action** — GitHub withholds it deliberately, so
@@ -67,11 +85,18 @@ enforce it for a composite action's inputs.
 
 ```yaml
 - run: bash "$GITHUB_ACTION_PATH/require-token.sh"
-- uses: actions/setup-java@... # temurin, 21
+- run: bash "$GITHUB_ACTION_PATH/jdk-satisfied.sh"
+- uses: actions/setup-java@...                  # temurin, java-version
+  if: steps.jdk.outputs.satisfied != 'true'
 - uses: SonarSource/sonarqube-scan-action@...
   with:
     args: -Dsonar.scanner.skipJreProvisioning=true
 ```
+
+`jdk-satisfied.sh` compares the feature version in `$JAVA_HOME/release` against the
+request. A request that is not a bare feature number, such as `21.0.x` or `latest`, always
+installs. Evaluating a range needs a semver implementation, and a wrong verdict would scan
+on the wrong JDK.
 
 ### Why provisioning is skipped
 
@@ -94,9 +119,10 @@ once.
 
 ## Side effects
 
-**`setup-java` sets `JAVA_HOME` for the remainder of the caller's job**, not just for this
-action. Call this action *after* any step that needs a different JDK. Every current
-consumer scans last, so nothing follows it.
+**Installing a JDK sets `JAVA_HOME` for the remainder of the caller's job**, not just for
+this action. A job that needs a different JDK either calls this action *after* the steps
+that need it, or passes that version as `java-version`. Every current consumer scans last,
+so nothing follows it.
 
 ## What this action does not do
 

@@ -1,9 +1,8 @@
 name: sonar/scan
 description: >-
-  Run a SonarQube Cloud scan on a JDK this action supplies, with the scanner's own JRE
-  provisioning disabled. Takes no Java version: centralising the version SonarSource
-  requires, which the scanner enforces whenever provisioning is skipped, is what this
-  action is for.
+  Run a SonarQube Cloud scan on a JDK at or above the version SonarSource requires, with
+  the scanner's own JRE provisioning disabled. Supplies that JDK unless the one already on
+  JAVA_HOME is the version asked for.
 
 # Metadata only. No Marketplace listing is published, and none could be: a listing
 # requires action.yml at the repository root, which every action here deliberately
@@ -12,12 +11,11 @@ branding:
   icon: shield
   color: blue
 
-# sonar-token is the only input, and new ones are added one at a time, named, when a
-# consumer actually needs them. A passthrough input is what this action exists to remove:
-# a consumer who can choose the Java version, or append scanner arguments, is back to
-# fixing their own repository the next time SonarSource raises the floor. Adding an
-# optional input later is not a breaking change (CONTRIBUTING.md, "Breaking changes");
-# removing one is, so the narrow interface comes first.
+# Inputs are added one at a time, named, when a consumer actually needs them. An argument
+# passthrough is what this action exists to remove: a consumer who can append scanner
+# arguments is back to fixing their own repository the next time SonarSource raises the
+# floor. Adding an optional input is not a breaking change (CONTRIBUTING.md, "Breaking
+# changes"); removing one is, so the interface stays narrow.
 #
 # Per-project analysis configuration belongs in the consumer's sonar-project.properties,
 # not in an argument list here. See README.md.
@@ -27,6 +25,14 @@ inputs:
       SonarCloud token. Pass the repository's SONAR_TOKEN secret. Required and passed
       explicitly because the `secrets` context is unavailable inside a composite action.
     required: true
+  java-version:
+    description: >-
+      Feature version of the JDK the scan runs on. The default is the floor SonarSource
+      enforces. A job that already has this version on JAVA_HOME keeps it, whatever the
+      distribution. Any other request installs Temurin and repoints JAVA_HOME at it for
+      the remainder of the job. A range or a floating version always installs.
+    required: false
+    default: '21'
 
 runs:
   using: composite
@@ -40,23 +46,34 @@ runs:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
       run: bash "$GITHUB_ACTION_PATH/require-token.sh"
 
-    # Java 21 since 2026-07-20, the floor SonarSource enforces for a scanner runtime with
-    # JRE auto-provisioning disabled. A scanner CLI bump can raise it again, and this line
-    # is then the single edit that moves every consumer - which is the whole point of the
-    # action. Deliberately not an input.
+    # setup-java resolves a request against the runner tool cache alone, so a JDK from
+    # SDKMAN or apt is invisible to it and gets shadowed by a second copy of that version.
+    - name: Check the JDK on JAVA_HOME
+      id: jdk
+      shell: bash
+      env:
+        REQUESTED: ${{ inputs.java-version }}
+      run: bash "$GITHUB_ACTION_PATH/jdk-satisfied.sh"
+
+    # The default is Java 21 since 2026-07-20, the floor SonarSource enforces for a scanner
+    # runtime with JRE auto-provisioning disabled. A scanner CLI bump can raise it again,
+    # and the default is then the single edit that moves every consumer who passes no
+    # version - which is the whole point of the action.
     #
     # Supplying the JDK is what lets the scan skip JRE provisioning below. Temurin is in
-    # the hosted image's tool cache, so this resolves in about a second and downloads
-    # nothing; auto-provisioning instead fetches a JRE into ~/.sonar/cache, which is
-    # ephemeral on a hosted runner and so re-downloaded on every single run.
+    # the hosted image's tool cache, so a cached version resolves in about a second and
+    # downloads nothing; auto-provisioning instead fetches a JRE into ~/.sonar/cache, which
+    # is ephemeral on a hosted runner and so re-downloaded on every single run.
     #
-    # This sets JAVA_HOME for the remainder of the caller's job, not just this action.
-    # Call the action after any step that needs a different JDK.
+    # Running this step sets JAVA_HOME for the remainder of the caller's job, not just this
+    # action. Call the action after any step that needs a different JDK, or name that JDK
+    # here.
     - name: Set up JDK
+      if: steps.jdk.outputs.satisfied != 'true'
       uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
       with:
         distribution: temurin
-        java-version: '21'
+        java-version: ${{ inputs.java-version }}
 
     # skipJreProvisioning is what makes the JDK above the one the scan runs on, and is
     # also what makes the hardcoded version load-bearing: with provisioning on, the
