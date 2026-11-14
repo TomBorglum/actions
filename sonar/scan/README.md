@@ -11,13 +11,10 @@ version here means the next raise is one edit in this repository rather than one
 repository that scans. `java-version` overrides the default for a job whose own steps run
 on a newer JDK.
 
-A job that already has the requested feature version on `JAVA_HOME` scans on it, whatever
-its distribution and wherever it came from, and `JAVA_HOME` is left untouched. Only a
-request the installed JDK does not meet installs Temurin, which is also the only case
-where `JAVA_HOME` changes under the caller. `setup-java` cannot make that call on its own:
-it resolves a request against the runner tool cache alone, so a JDK from SDKMAN, from
-`apt`, or from any other source is invisible to it and gets shadowed by a second copy of
-the same version.
+A job that already has the requested feature version on `JAVA_HOME` scans on that JDK,
+whatever its distribution. A request it does not meet installs Temurin instead.
+`setup-java` resolves a request against the runner tool cache alone, so a JDK from SDKMAN
+or `apt` is invisible to it and would be shadowed by a second copy of the same version.
 
 ## Usage
 
@@ -53,8 +50,7 @@ the steps that produce coverage, in the same job and the same workspace:
 A reusable workflow could not: it runs as its own job on its own runner, so the coverage
 those steps wrote would not exist for it to read.
 
-A job that compiles Java scans on the JDK that compiled it, and keeps that JDK when the
-versions agree:
+A job that compiles Java scans on the JDK that compiled it:
 
 ```yaml
       - uses: TomBorglum/actions/direnv/setup@v3   # .envrc declares Temurin 25
@@ -98,9 +94,9 @@ enforce it for a composite action's inputs.
 ```
 
 `jdk-satisfied.sh` compares the feature version in `$JAVA_HOME/release` against the
-request. A request that is not a bare feature number — a range such as `21.0.x`, or
-`latest` — is reported as unsatisfied and reaches `setup-java` unexamined: evaluating one
-needs a semver implementation, and a wrong verdict would scan on the wrong JDK.
+request. A request that is not a bare feature number, such as `21.0.x` or `latest`, always
+installs. Evaluating a range needs a semver implementation, and a wrong verdict would scan
+on the wrong JDK.
 
 ### Why provisioning is skipped
 
@@ -125,9 +121,8 @@ once.
 
 **Installing a JDK sets `JAVA_HOME` for the remainder of the caller's job**, not just for
 this action. A job that needs a different JDK either calls this action *after* the steps
-that need it, or passes that version as `java-version`, which keeps the JDK the job
-already has and leaves `JAVA_HOME` where it was. Every current consumer scans last, so
-nothing follows it.
+that need it, or passes that version as `java-version`. Every current consumer scans last,
+so nothing follows it.
 
 ## What this action does not do
 

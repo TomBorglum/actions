@@ -104,10 +104,8 @@ jobs:
             exit 1
           fi
 
-  # Unit-tests the JDK probe against the JDKs the hosted image exports as
-  # JAVA_HOME_<n>_X64, plus a fabricated pre-9 layout for the 1.8.0 version format. Driving
-  # each case through the action instead would cost a scan attempt per case and could only
-  # read the verdict indirectly, out of JAVA_HOME.
+  # Drives the probe directly rather than through the action: a case per call would cost a
+  # scan attempt each, and the verdict could only be read indirectly, out of JAVA_HOME.
   jdk-probe:
     runs-on: ubuntu-latest
     steps:
@@ -153,10 +151,9 @@ jobs:
           fi
           echo "an unset JAVA_HOME: satisfied=false"
 
-  # The wiring, as three calls in one job and in this order: setup-java sets JAVA_HOME for
-  # every later step, so each call starts from what the one before it left. Every scan step
-  # fails against the discard port, so JAVA_HOME after the action is the signal rather than
-  # the action's outcome.
+  # Three calls in one job and in this order: setup-java sets JAVA_HOME for every later
+  # step, so each call starts from what the one before it left. Every scan step fails
+  # against the discard port, so JAVA_HOME is the signal, not the action's outcome.
   java-version:
     runs-on: ubuntu-latest
     steps:

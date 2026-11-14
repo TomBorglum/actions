@@ -28,10 +28,9 @@ inputs:
   java-version:
     description: >-
       Feature version of the JDK the scan runs on. The default is the floor SonarSource
-      enforces. A job that already has this version on JAVA_HOME keeps it, whatever its
-      distribution; otherwise Temurin is installed and JAVA_HOME repointed at it for the
-      remainder of that job. A range or a floating version is passed to setup-java
-      unexamined, which always installs.
+      enforces. A job that already has this version on JAVA_HOME keeps it, whatever the
+      distribution. Any other request installs Temurin and repoints JAVA_HOME at it for
+      the remainder of the job. A range or a floating version always installs.
     required: false
     default: '21'
 
@@ -47,10 +46,8 @@ runs:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
       run: bash "$GITHUB_ACTION_PATH/require-token.sh"
 
-    # setup-java resolves the request against the runner tool cache alone, so a JDK a
-    # caller installed anywhere else - direnv/setup puts one under ~/.sdkman - is not
-    # recognised and JAVA_HOME is repointed at a second copy of the same version. This
-    # step is what recognises it. The script states what it compares and why.
+    # setup-java resolves a request against the runner tool cache alone, so a JDK from
+    # SDKMAN or apt is invisible to it and gets shadowed by a second copy of that version.
     - name: Check the JDK on JAVA_HOME
       id: jdk
       shell: bash
