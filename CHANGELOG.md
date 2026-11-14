@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.3.0](https://github.com/TomBorglum/actions/compare/v3.2.0...v3.3.0) (2026-11-14)
+
+
+### Features
+
+* take an optional java-version in sonar/scan ([#27](https://github.com/TomBorglum/actions/issues/27)) ([d79fbce](https://github.com/TomBorglum/actions/commit/d79fbce339abe2f989c0924b8d497086d9e3e744))
+
+
+### Dependencies
+
+* Bump the published-actions group across 1 directory with 2 updates ([#25](https://github.com/TomBorglum/actions/issues/25)) ([54fe40b](https://github.com/TomBorglum/actions/commit/54fe40b7a3627e0cbbdbc132a1c2d21b2565c742))
+
 ## [3.2.0](https://github.com/TomBorglum/actions/compare/v3.1.0...v3.2.0) (2026-11-05)
 
 
