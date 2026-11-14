@@ -162,8 +162,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # STAGED_JDK records the path under a name the action cannot touch: setup-java
+      # rewrites JAVA_HOME_25_X64 to its own install when it sets up 25, so the assertions
+      # below would otherwise compare against a moved target.
       - name: Stage JAVA_HOME at JDK 25
-        run: echo "JAVA_HOME=$JAVA_HOME_25_X64" >> "$GITHUB_ENV"
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_25_X64" >> "$GITHUB_ENV"
+          echo "STAGED_JDK=$JAVA_HOME_25_X64" >> "$GITHUB_ENV"
 
       - name: Scan on the staged JDK
         continue-on-error: true
@@ -175,7 +180,7 @@ jobs:
       - name: Assert the staged JDK was kept
         run: |
           set -euo pipefail
-          if [[ "$JAVA_HOME" != "$JAVA_HOME_25_X64" ]]; then
+          if [[ "$JAVA_HOME" != "$STAGED_JDK" ]]; then
             echo "expected the staged JDK 25 to be kept, got JAVA_HOME: $JAVA_HOME" >&2
             exit 1
           fi
@@ -218,8 +223,8 @@ jobs:
             echo "expected JDK $EXPECTED on JAVA_HOME, got: $reported" >&2
             exit 1
           fi
-          if [[ "$JAVA_HOME" == "$JAVA_HOME_25_X64" ]]; then
-            echo "expected a tool-cache install, got the staged JAVA_HOME: $JAVA_HOME" >&2
+          if [[ "$JAVA_HOME" == "$STAGED_JDK" ]]; then
+            echo "expected an install of its own, got the staged JDK: $JAVA_HOME" >&2
             exit 1
           fi
           echo "$reported"
