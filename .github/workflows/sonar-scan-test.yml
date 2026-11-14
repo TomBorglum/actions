@@ -1,7 +1,7 @@
 name: sonar/scan test
 
-# Exercises the sonar/scan composite action's token guard and the JDK it sets up. That is
-# the whole of what this workflow can assert offline.
+# Exercises the sonar/scan composite action's token guard, its JDK probe and the JDK it
+# sets up. That is the whole of what this workflow can assert offline.
 #
 # It asserts which JDK reaches JAVA_HOME, not whether the scanner accepts it, and no job
 # here runs an analysis. With JRE provisioning skipped the scanner enforces its own floor
@@ -10,9 +10,9 @@ name: sonar/scan test
 # token, and it is what fails when SonarSource raises the floor again - as happened at
 # sonarqube-scan-action 8.4.0, when the bundled SonarScanner CLI moved to 21 and broke three
 # repositories. An offline assertion on `java -version` cannot do that job: it reports green
-# whatever the scanner would have made of that JDK. What it can do is prove that the
-# version the action resolves is the one a consumer asked for, which is what the
-# java-version job below covers.
+# whatever the scanner would have made of that JDK. What it can do is prove that the JDK
+# the action leaves on JAVA_HOME is the one a consumer asked for, and that a JDK already
+# there is kept rather than replaced - the jdk-probe and java-version jobs below.
 #
 # SONAR_HOST_URL points every job at the discard port on localhost, so the scanner's first
 # call fails to connect and nothing leaves the runner - no token is needed, no SonarCloud
@@ -104,14 +104,82 @@ jobs:
             exit 1
           fi
 
-  # Both JDKs are asserted in one job and in this order, because setup-java sets JAVA_HOME
-  # for the rest of the job: a later call overwrites what an earlier one left. Each scan
-  # step fails against the discard port, so the assertion reads JAVA_HOME rather than the
-  # action's outcome.
+  # Unit-tests the JDK probe against the JDKs the hosted image exports as
+  # JAVA_HOME_<n>_X64, plus a fabricated pre-9 layout for the 1.8.0 version format. Driving
+  # each case through the action instead would cost a scan attempt per case and could only
+  # read the verdict indirectly, out of JAVA_HOME.
+  jdk-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Assert the probe compares the feature version
+        run: |
+          set -euo pipefail
+          probe=sonar/scan/jdk-satisfied.sh
+          output="$(mktemp)"
+
+          assert() {
+            local expected="$1" requested="$2" home="$3" label="$4"
+            : > "$output"
+            GITHUB_OUTPUT="$output" REQUESTED="$requested" JAVA_HOME="$home" bash "$probe"
+            if ! grep -qx "satisfied=$expected" "$output"; then
+              echo "expected satisfied=$expected for $label, got: $(cat "$output")" >&2
+              exit 1
+            fi
+            echo "$label: satisfied=$expected"
+          }
+
+          # A pre-9 JDK reports JAVA_VERSION="1.8.0_462". Fabricated rather than taken from
+          # the image, so the parser stays covered when the image drops Java 8.
+          legacy="$(mktemp -d)"
+          mkdir -p "$legacy/bin"
+          printf 'JAVA_VERSION="1.8.0_462"\n' > "$legacy/release"
+          : > "$legacy/bin/java"
+          chmod +x "$legacy/bin/java"
+
+          assert true "25" "$JAVA_HOME_25_X64" "the requested feature version"
+          assert true "8" "$legacy" "a pre-9 JAVA_VERSION"
+          assert false "21" "$JAVA_HOME_25_X64" "a newer JDK than requested"
+          assert false "25" "$JAVA_HOME_17_X64" "an older JDK than requested"
+          assert false "21.0.x" "$JAVA_HOME_21_X64" "a range the probe does not evaluate"
+          assert false "25" "/nonexistent" "a JAVA_HOME holding no JDK"
+
+          : > "$output"
+          GITHUB_OUTPUT="$output" REQUESTED=25 env -u JAVA_HOME bash "$probe"
+          if ! grep -qx "satisfied=false" "$output"; then
+            echo "expected satisfied=false for an unset JAVA_HOME, got: $(cat "$output")" >&2
+            exit 1
+          fi
+          echo "an unset JAVA_HOME: satisfied=false"
+
+  # The wiring, as three calls in one job and in this order: setup-java sets JAVA_HOME for
+  # every later step, so each call starts from what the one before it left. Every scan step
+  # fails against the discard port, so JAVA_HOME after the action is the signal rather than
+  # the action's outcome.
   java-version:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Stage JAVA_HOME at JDK 25
+        run: echo "JAVA_HOME=$JAVA_HOME_25_X64" >> "$GITHUB_ENV"
+
+      - name: Scan on the staged JDK
+        continue-on-error: true
+        uses: ./sonar/scan
+        with:
+          sonar-token: a-token
+          java-version: '25'
+
+      - name: Assert the staged JDK was kept
+        run: |
+          set -euo pipefail
+          if [[ "$JAVA_HOME" != "$JAVA_HOME_25_X64" ]]; then
+            echo "expected the staged JDK 25 to be kept, got JAVA_HOME: $JAVA_HOME" >&2
+            exit 1
+          fi
+          echo "$JAVA_HOME"
 
       - name: Scan with no java-version
         continue-on-error: true
@@ -119,13 +187,13 @@ jobs:
         with:
           sonar-token: a-token
 
-      - name: Assert the default JDK is 21
+      - name: Assert the default replaced it with JDK 21
         env:
-          EXPECTED: '21'
+          EXPECTED: '21.'
         run: |
           set -euo pipefail
           reported="$("$JAVA_HOME/bin/java" -version 2>&1 | head -1)"
-          if [[ "$reported" != *"\"$EXPECTED."* ]]; then
+          if [[ "$reported" != *"\"$EXPECTED"* ]]; then
             echo "expected JDK $EXPECTED on JAVA_HOME, got: $reported" >&2
             exit 1
           fi
@@ -138,9 +206,9 @@ jobs:
           sonar-token: a-token
           java-version: '25'
 
-      # A feature release reports a bare `"25"`, where 21 reports `"21.0.9"`, so the two
+      # A feature release reports a bare `"25"`, where 21 reports `"21.0.13"`, so the two
       # assertions match on different patterns.
-      - name: Assert the requested JDK is 25
+      - name: Assert the request installed JDK 25
         env:
           EXPECTED: '25'
         run: |
@@ -150,12 +218,17 @@ jobs:
             echo "expected JDK $EXPECTED on JAVA_HOME, got: $reported" >&2
             exit 1
           fi
+          if [[ "$JAVA_HOME" == "$JAVA_HOME_25_X64" ]]; then
+            echo "expected a tool-cache install, got the staged JAVA_HOME: $JAVA_HOME" >&2
+            exit 1
+          fi
           echo "$reported"
 
   sonar-scan-tests-pass:
     if: always()
     needs:
       - token-required
+      - jdk-probe
       - java-version
     runs-on: ubuntu-latest
     steps:

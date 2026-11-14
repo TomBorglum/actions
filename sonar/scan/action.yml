@@ -1,8 +1,8 @@
 name: sonar/scan
 description: >-
-  Run a SonarQube Cloud scan on a JDK this action supplies, with the scanner's own JRE
-  provisioning disabled. The JDK defaults to the version SonarSource requires, which the
-  scanner enforces whenever provisioning is skipped.
+  Run a SonarQube Cloud scan on a JDK at or above the version SonarSource requires, with
+  the scanner's own JRE provisioning disabled. Supplies that JDK unless the one already on
+  JAVA_HOME is the version asked for.
 
 # Metadata only. No Marketplace listing is published, and none could be: a listing
 # requires action.yml at the repository root, which every action here deliberately
@@ -27,9 +27,11 @@ inputs:
     required: true
   java-version:
     description: >-
-      JDK the scan runs on. The default is the floor SonarSource enforces. Set it to the
-      version the rest of the job needs, because this action sets JAVA_HOME for the
-      remainder of that job.
+      Feature version of the JDK the scan runs on. The default is the floor SonarSource
+      enforces. A job that already has this version on JAVA_HOME keeps it, whatever its
+      distribution; otherwise Temurin is installed and JAVA_HOME repointed at it for the
+      remainder of that job. A range or a floating version is passed to setup-java
+      unexamined, which always installs.
     required: false
     default: '21'
 
@@ -45,6 +47,17 @@ runs:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
       run: bash "$GITHUB_ACTION_PATH/require-token.sh"
 
+    # setup-java resolves the request against the runner tool cache alone, so a JDK a
+    # caller installed anywhere else - direnv/setup puts one under ~/.sdkman - is not
+    # recognised and JAVA_HOME is repointed at a second copy of the same version. This
+    # step is what recognises it. The script states what it compares and why.
+    - name: Check the JDK on JAVA_HOME
+      id: jdk
+      shell: bash
+      env:
+        REQUESTED: ${{ inputs.java-version }}
+      run: bash "$GITHUB_ACTION_PATH/jdk-satisfied.sh"
+
     # The default is Java 21 since 2026-07-20, the floor SonarSource enforces for a scanner
     # runtime with JRE auto-provisioning disabled. A scanner CLI bump can raise it again,
     # and the default is then the single edit that moves every consumer who passes no
@@ -55,9 +68,11 @@ runs:
     # downloads nothing; auto-provisioning instead fetches a JRE into ~/.sonar/cache, which
     # is ephemeral on a hosted runner and so re-downloaded on every single run.
     #
-    # This sets JAVA_HOME for the remainder of the caller's job, not just this action.
-    # Call the action after any step that needs a different JDK, or name that JDK here.
+    # Running this step sets JAVA_HOME for the remainder of the caller's job, not just this
+    # action. Call the action after any step that needs a different JDK, or name that JDK
+    # here.
     - name: Set up JDK
+      if: steps.jdk.outputs.satisfied != 'true'
       uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
       with:
         distribution: temurin
