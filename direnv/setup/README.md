@@ -119,8 +119,8 @@ entry of its own, so a dependency change recompiles on every push to it until me
 The toolchain entry saves on every event. It is small, and restoring it is what makes a pull
 request's install fast.
 
-Each run logs both keys, whether the hit was exact or a fallback, and the size of every
-cached path.
+Each run logs both keys, whether each hit was on the exact key, and the size of every cached
+path.
 
 ## How the environment reaches later steps
 

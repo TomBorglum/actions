@@ -123,11 +123,16 @@ runs:
         key: ${{ steps.cache-keys.outputs.paths-key }}
         restore-keys: ${{ steps.cache-keys.outputs.paths-restore-keys }}
 
-    # Which rung each entry matched, and what it restored. Without this a fallback hit is
-    # indistinguishable in the log from an exact one, and the two differ in what the job then
-    # has to rebuild. Only one of the two steps above runs, so each value is read from
-    # whichever did. The compressed size of a save needs nothing here - actions/cache's own
-    # post-step logs it.
+    # Which key each entry resolved to and what it restored. Without this a fallback hit is
+    # indistinguishable from an exact one in a consumer's log, and the two differ in what the
+    # job then has to rebuild.
+    #
+    # actions/cache publishes cache-hit alone; only actions/cache/restore also publishes
+    # cache-matched-key. So the matched key is reported for the restore-only case and omitted
+    # otherwise, where exact-hit=false means a fallback rung or a miss and that step's own log
+    # says which. Only one of the two steps above runs, so each value is read from whichever
+    # did. The compressed size of a save needs nothing here - actions/cache's post-step logs
+    # it.
     - name: Report the caches
       if: ${{ inputs.cache == 'true' }}
       shell: bash
@@ -136,10 +141,9 @@ runs:
         CACHE_PATHS: ${{ inputs.cache-paths }}
         TOOLS_KEY: ${{ steps.cache-keys.outputs.tools-key }}
         TOOLS_HIT: ${{ steps.cache-tools.outputs.cache-hit }}
-        TOOLS_MATCHED: ${{ steps.cache-tools.outputs.cache-matched-key }}
         PATHS_KEY: ${{ steps.cache-keys.outputs.paths-key }}
         PATHS_HIT: ${{ steps.cache-paths.outputs.cache-hit || steps.restore-paths.outputs.cache-hit }}
-        PATHS_MATCHED: ${{ steps.cache-paths.outputs.cache-matched-key || steps.restore-paths.outputs.cache-matched-key }}
+        PATHS_MATCHED: ${{ steps.restore-paths.outputs.cache-matched-key }}
         PATHS_SAVED: ${{ steps.cache-paths.conclusion }}
       run: |
         set -euo pipefail
@@ -158,7 +162,7 @@ runs:
           done
         }
 
-        echo "toolchains: key=$TOOLS_KEY exact-hit=${TOOLS_HIT:-false} matched=${TOOLS_MATCHED:-<none>}"
+        echo "toolchains: key=$TOOLS_KEY exact-hit=${TOOLS_HIT:-false}"
         printf '%s\n' '~/.sdkman' '~/.fnm' '~/.pixi' | sizes
 
         if [[ -z "${CACHE_PATHS//[[:space:]]/}" ]]; then
@@ -166,7 +170,9 @@ runs:
           exit 0
         fi
 
-        echo "cache-paths (digest $DIGEST): key=$PATHS_KEY exact-hit=${PATHS_HIT:-false} matched=${PATHS_MATCHED:-<none>}"
+        line="cache-paths (digest $DIGEST): key=$PATHS_KEY exact-hit=${PATHS_HIT:-false}"
+        if [[ -n "$PATHS_MATCHED" ]]; then line="$line matched=$PATHS_MATCHED"; fi
+        echo "$line"
         if [[ "$PATHS_SAVED" == "success" ]]; then
           echo "cache-paths: this entry will be saved at job end"
         else
