@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.0](https://github.com/TomBorglum/actions/compare/v3.3.0...v3.4.0) (2026-11-17)
+
+
+### Features
+
+* **direnv/setup:** cache caller-supplied paths on a rotating key ([#28](https://github.com/TomBorglum/actions/issues/28)) ([5038810](https://github.com/TomBorglum/actions/commit/5038810a1cec11a114fc3a717f21196bc37e6250))
+
 ## [3.3.0](https://github.com/TomBorglum/actions/compare/v3.2.0...v3.3.0) (2026-11-14)
 
 
