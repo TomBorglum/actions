@@ -33,7 +33,8 @@ when to pin more tightly.
 | Input | Default | Description |
 | --- | --- | --- |
 | `working-directory` | `.` | Directory containing the `.envrc` to activate. |
-| `cache` | `'true'` | Cache the toolchain dirs (`~/.sdkman`, `~/.fnm`, `~/.pixi`) across runs, keyed on the `.envrc`. Set to `'false'` to disable. |
+| `cache` | `'true'` | Cache the toolchain dirs (`~/.sdkman`, `~/.fnm`, `~/.pixi`) and the paths in `cache-paths`. Set to `'false'` to disable both. See [Caching](#caching). |
+| `cache-paths` | `''` | Newline-separated paths to cache as a second entry — a pixi environment, a cargo home, a build output directory. Ignored when `cache` is `'false'`. |
 | `stub-directives` | `''` | Whitespace-separated directive names to define as no-ops. See [below](#stub-directives). |
 
 The action fails if there is no `.envrc` in `working-directory`, and it fails if the
@@ -76,6 +77,50 @@ rewritten — CI would otherwise run against dependencies that are not the commi
 A workspace that also declares [`requires-pixi`](https://pixi.prefix.dev/latest/reference/pixi_manifest/)
 composes with this for free: if the version the `.envrc` pins does not satisfy it, pixi
 itself refuses, so this action needs no code for it.
+
+## Caching
+
+Two entries, both restored before the `.envrc` is evaluated:
+
+| Entry | Paths | Key |
+| --- | --- | --- |
+| toolchains | `~/.sdkman`, `~/.fnm`, `~/.pixi` | `direnv-setup-tools-<os>-<YYYY-MM>-<YYYY-WW>` |
+| `cache-paths` | what the input names | `direnv-setup-<digest>-<os>-<YYYY-MM>-<YYYY-WW>` |
+
+Each entry has one fallback rung: its own key truncated after the month,
+`direnv-setup-tools-<os>-<YYYY-MM>-`.
+
+`<digest>` is the first 12 hex characters of the `sha256` of `working-directory` and the
+`cache-paths` list sorted, computed by [`cache-keys.sh`](cache-keys.sh). Reordering the list
+leaves it unchanged. Two callers naming different path sets therefore get different
+lineages, which is a requirement and not tidiness: one key holds one set of paths, so a
+second caller saving a different set under the same key is reported `cache-hit: true` having
+restored none of its own.
+
+Dates are UTC. `<YYYY-WW>` forces a save once a week, because `actions/cache` skips its save
+on an exact-key hit and an entry would otherwise be written once and never refreshed.
+`<YYYY-MM>` ends the lineage: nothing saved in a previous month is reachable through the
+fallback, which is what stops an entry that is base-restored and re-saved each week from
+growing without bound.
+
+No manifest is in either key. A change to `.envrc`, `pixi.lock` or `Cargo.lock` restores the
+week's entry as a base and the job updates it, rather than cold-starting.
+
+A cold start happens on the first run of a month, on an edit to the `cache-paths` list, and
+on a `working-directory` change.
+
+`cache-paths` is saved only on a push to the repository's default branch; every other event
+restores without saving. A cache is scoped to key, version and branch, and only the default
+branch's entries are readable from another branch — so an entry written on a pull request is
+readable from that branch alone, counts against the repository's cache quota while it lives,
+and is discarded with the branch. The cost of saving on one branch: a pull request has no
+entry of its own, so a dependency change recompiles on every push to it until merge.
+
+The toolchain entry saves on every event. It is small, and restoring it is what makes a pull
+request's install fast.
+
+Each run logs both keys, whether the hit was exact or a fallback, and the size of every
+cached path.
 
 ## How the environment reaches later steps
 

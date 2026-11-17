@@ -18,10 +18,19 @@ inputs:
     default: '.'
   cache:
     description: >-
-      Cache the language toolchain dirs (~/.sdkman, ~/.fnm, ~/.pixi) across runs,
-      keyed on the .envrc. Set to 'false' to disable.
+      Cache the language toolchain dirs (~/.sdkman, ~/.fnm, ~/.pixi) across runs, and
+      the paths given in cache-paths. Set to 'false' to disable both entries.
     required: false
     default: 'true'
+  cache-paths:
+    description: >-
+      Newline-separated paths to cache alongside the toolchain dirs, as a second entry
+      with a key of its own. Pass whatever the job's stack needs beyond the toolchains
+      themselves - a pixi environment, a cargo home, a build output directory. The list
+      is cached as given; reordering it does not change the key. Ignored when cache is
+      'false'.
+    required: false
+    default: ''
   stub-directives:
     description: >-
       Whitespace-separated directive names to define as no-ops. This action rejects an
@@ -46,23 +55,36 @@ runs:
       shell: bash
       run: bash "$GITHUB_ACTION_PATH/install-direnv.sh"
 
-    # Restore the toolchain dirs before activation, keyed on the .envrc so a change
-    # to a declared version invalidates the cache. One entry, directive-agnostic: the
-    # path lists every tool dir a directive might populate, and actions/cache skips a
-    # path that does not exist (an fnm-only .envrc caches only ~/.fnm, etc.).
-    # actions/cache registers a post-step that saves at job end (skipped on an
-    # exact-key hit). On a full hit, each directive's idempotency (its install-dir
-    # guard) skips every download.
+    # Both cache steps run before activation, which is what performs the installs they
+    # exist to skip.
+    - name: Compute cache keys
+      id: cache-keys
+      if: ${{ inputs.cache == 'true' }}
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        CACHE_PATHS: ${{ inputs.cache-paths }}
+      run: bash "$GITHUB_ACTION_PATH/cache-keys.sh"
+
+    # One entry for the toolchain dirs, directive-agnostic: the path lists every tool dir a
+    # directive might populate, and actions/cache skips a path that does not exist (an
+    # fnm-only .envrc caches only ~/.fnm, etc.). On a full hit, each directive's install-dir
+    # guard skips every download.
     #
-    # stub-directives is deliberately absent from the key: a stub installs nothing, so
-    # it cannot change what any of these directories hold.
+    # The key rotates on a time window rather than hashing the .envrc, so a version bump
+    # reuses the previous week's entry as a base instead of cold-starting. What bounds the
+    # growth that base-restoring causes is the month segment: nothing from the previous month
+    # is reachable through the fallback rung, so a superseded toolchain survives at most into
+    # the following month. The week segment exists because actions/cache skips its save on an
+    # exact-key hit - without a rotating segment an entry would be written once and never
+    # refreshed.
     #
-    # No restore-keys on purpose: a broad prefix fallback would base-restore the prior
-    # .envrc's toolchains on every version change, so old ones would accrete and the
-    # cache would grow without bound. With an exact key only, an unchanged .envrc is a
-    # full hit (no downloads), a version change starts a lean fresh cache, and the
-    # superseded entry auto-evicts after 7 days idle.
+    # stub-directives is deliberately absent from the key: a stub installs nothing, so it
+    # cannot change what any of these directories hold. So is cache-paths - these three dirs
+    # live in HOME and are identical for every caller, and folding the caller's lineage in
+    # here would store a second copy of ~/.pixi per workspace in a monorepo.
     - name: Cache toolchains
+      id: cache-tools
       if: ${{ inputs.cache == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -70,10 +92,89 @@ runs:
           ~/.sdkman
           ~/.fnm
           ~/.pixi
-        # hashFiles globs relative to GITHUB_WORKSPACE; with working-directory '.' the
-        # key ends in '/.envrc', which resolves. It is empty when there is no .envrc
-        # (that path fails activation anyway), which is a harmless constant key.
-        key: direnv-setup-toolchains-${{ runner.os }}-${{ hashFiles(format('{0}/.envrc', inputs.working-directory)) }}
+        key: ${{ steps.cache-keys.outputs.tools-key }}
+        restore-keys: ${{ steps.cache-keys.outputs.tools-restore-keys }}
+
+    # The caller's paths, saved only on a push to the default branch. A cache is scoped to
+    # key, version AND branch, and only the default branch's entries are readable from
+    # another branch - so an entry written on a pull request is readable from that branch
+    # alone, counts against the repository's 10 GB while it lives, and is discarded with the
+    # branch. Saving on the default branch only is what gives every branch one entry to
+    # restore, and it is what keeps a single live lineage per month however many pull
+    # requests are open.
+    #
+    # The cost is explicit: a pull request has no warm lineage of its own, so a dependency
+    # change recompiles on every push to it until merge.
+    - name: Cache the caller's paths
+      id: cache-paths
+      if: ${{ inputs.cache == 'true' && inputs.cache-paths != '' && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.cache-paths }}
+        key: ${{ steps.cache-keys.outputs.paths-key }}
+        restore-keys: ${{ steps.cache-keys.outputs.paths-restore-keys }}
+
+    - name: Restore the caller's paths
+      id: restore-paths
+      if: ${{ inputs.cache == 'true' && inputs.cache-paths != '' && !(github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.cache-paths }}
+        key: ${{ steps.cache-keys.outputs.paths-key }}
+        restore-keys: ${{ steps.cache-keys.outputs.paths-restore-keys }}
+
+    # Which rung each entry matched, and what it restored. Without this a fallback hit is
+    # indistinguishable in the log from an exact one, and the two differ in what the job then
+    # has to rebuild. Only one of the two steps above runs, so each value is read from
+    # whichever did. The compressed size of a save needs nothing here - actions/cache's own
+    # post-step logs it.
+    - name: Report the caches
+      if: ${{ inputs.cache == 'true' }}
+      shell: bash
+      env:
+        DIGEST: ${{ steps.cache-keys.outputs.digest }}
+        CACHE_PATHS: ${{ inputs.cache-paths }}
+        TOOLS_KEY: ${{ steps.cache-keys.outputs.tools-key }}
+        TOOLS_HIT: ${{ steps.cache-tools.outputs.cache-hit }}
+        TOOLS_MATCHED: ${{ steps.cache-tools.outputs.cache-matched-key }}
+        PATHS_KEY: ${{ steps.cache-keys.outputs.paths-key }}
+        PATHS_HIT: ${{ steps.cache-paths.outputs.cache-hit || steps.restore-paths.outputs.cache-hit }}
+        PATHS_MATCHED: ${{ steps.cache-paths.outputs.cache-matched-key || steps.restore-paths.outputs.cache-matched-key }}
+        PATHS_SAVED: ${{ steps.cache-paths.conclusion }}
+      run: |
+        set -euo pipefail
+
+        sizes() {
+          local line path
+          while IFS= read -r line; do
+            # actions/cache expands a leading ~/ itself, so the same expansion is needed
+            # here for du to be given the path the entry actually holds.
+            path="${line/#\~\//$HOME/}"
+            if [[ -e "$path" ]]; then
+              du -sh "$path"
+            else
+              echo "absent  $path"
+            fi
+          done
+        }
+
+        echo "toolchains: key=$TOOLS_KEY exact-hit=${TOOLS_HIT:-false} matched=${TOOLS_MATCHED:-<none>}"
+        printf '%s\n' '~/.sdkman' '~/.fnm' '~/.pixi' | sizes
+
+        if [[ -z "${CACHE_PATHS//[[:space:]]/}" ]]; then
+          echo "cache-paths: not set"
+          exit 0
+        fi
+
+        echo "cache-paths (digest $DIGEST): key=$PATHS_KEY exact-hit=${PATHS_HIT:-false} matched=${PATHS_MATCHED:-<none>}"
+        if [[ "$PATHS_SAVED" == "success" ]]; then
+          echo "cache-paths: this entry will be saved at job end"
+        else
+          echo "cache-paths: restore only - a save happens on a push to the default branch"
+        fi
+        printf '%s\n' "$CACHE_PATHS" \
+          | awk '{ gsub(/^[[:space:]]+|[[:space:]]+$/, ""); if ($0 != "") print }' \
+          | sizes
 
     # Activate the .envrc: install the CI direnv directives, fail if there is no
     # .envrc, then evaluate it. Evaluating it runs each use_* directive, which installs
