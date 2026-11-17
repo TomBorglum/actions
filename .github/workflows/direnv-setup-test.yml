@@ -337,10 +337,15 @@ jobs:
           # would do it inside a command substitution's subshell and every case would read
           # back the first one's keys.
           keys() {
-            GITHUB_OUTPUT="$out/$1" WORKING_DIRECTORY="$2" CACHE_PATHS="$3" RUNNER_OS=Linux \
+            local case=$1 working_directory=$2 cache_paths=$3
+            GITHUB_OUTPUT="$out/$case" WORKING_DIRECTORY="$working_directory" \
+              CACHE_PATHS="$cache_paths" RUNNER_OS=Linux \
               bash direnv/setup/cache-keys.sh
           }
-          val() { grep -m1 "^$2=" "$out/$1" | cut -d= -f2-; }
+          val() {
+            local case=$1 field=$2
+            grep -m1 "^$field=" "$out/$case" | cut -d= -f2-
+          }
 
           cargo=$'target\n.pixi/envs\n~/.cargo/registry'
           # The same set, reordered and padded, which must digest identically: a consumer
