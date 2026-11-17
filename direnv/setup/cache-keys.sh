@@ -13,10 +13,16 @@ cache_paths="${CACHE_PATHS:-}"
 os="${RUNNER_OS:-unknown}"
 
 # UTC, so a job running near midnight cannot be assigned a different window depending on the
-# runner's zone. Both fields are fixed-width and the month is followed by a separator in
-# every key below, so the month fallback rung cannot prefix-match a neighbouring month.
-month="$(date -u '+%Y-%m')"
-week="$(date -u '+%Y-%U')"
+# runner's zone. One call rather than two, so a job crossing a second boundary cannot pair a
+# month with a week read a moment earlier.
+#
+# The week needs no year of its own: %U is the week of the same calendar year the month
+# segment already pins, and it never repeats within a month. The 'w' marker is what keeps
+# 2026-11-w46 from reading as a date with a day of 46.
+#
+# Both fields are fixed-width and the month is followed by a separator in every key below, so
+# the month fallback rung cannot prefix-match a neighbouring month.
+read -r month week <<< "$(date -u '+%Y-%m w%U')"
 
 # Sorted under LC_ALL=C: a locale's collation ignores punctuation, so the same list would
 # digest differently between runners and cold-start a lineage that is in fact unchanged.

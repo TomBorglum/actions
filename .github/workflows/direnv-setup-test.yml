@@ -358,7 +358,7 @@ jobs:
           keys extra . "$cargo"$'\n~/.cargo/git'
           keys empty . ""
 
-          week="$(date -u '+%Y-%U')"
+          week="$(date -u '+w%U')"
           month="$(date -u '+%Y-%m')"
 
           # The shape itself. The digest precedes the rotating segments, which is what puts it
@@ -388,7 +388,7 @@ jobs:
 
           # An unset cache-paths still has to yield a well-formed key: the action computes
           # both keys unconditionally and only the cache steps are gated on the input.
-          [[ "$(val empty paths-key)" =~ ^direnv-setup-[0-9a-f]{12}-Linux-[0-9]{4}-[0-9]{2}-[0-9]{4}-[0-9]{2}$ ]]
+          [[ "$(val empty paths-key)" =~ ^direnv-setup-[0-9a-f]{12}-Linux-[0-9]{4}-[0-9]{2}-w[0-9]{2}$ ]]
 
   # The cache-paths input end to end: that a caller's paths reach actions/cache without
   # breaking activation, that a path which does not exist yet is tolerated, and that the

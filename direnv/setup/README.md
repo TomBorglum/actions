@@ -84,8 +84,8 @@ Two entries, both restored before the `.envrc` is evaluated:
 
 | Entry | Paths | Key |
 | --- | --- | --- |
-| toolchains | `~/.sdkman`, `~/.fnm`, `~/.pixi` | `direnv-setup-tools-<os>-<YYYY-MM>-<YYYY-WW>` |
-| `cache-paths` | what the input names | `direnv-setup-<digest>-<os>-<YYYY-MM>-<YYYY-WW>` |
+| toolchains | `~/.sdkman`, `~/.fnm`, `~/.pixi` | `direnv-setup-tools-<os>-<YYYY-MM>-w<WW>` |
+| `cache-paths` | what the input names | `direnv-setup-<digest>-<os>-<YYYY-MM>-w<WW>` |
 
 Each entry has one fallback rung: its own key truncated after the month,
 `direnv-setup-tools-<os>-<YYYY-MM>-`.
@@ -97,11 +97,12 @@ lineages, which is a requirement and not tidiness: one key holds one set of path
 second caller saving a different set under the same key is reported `cache-hit: true` having
 restored none of its own.
 
-Dates are UTC. `<YYYY-WW>` forces a save once a week, because `actions/cache` skips its save
-on an exact-key hit and an entry would otherwise be written once and never refreshed.
-`<YYYY-MM>` ends the lineage: nothing saved in a previous month is reachable through the
-fallback, which is what stops an entry that is base-restored and re-saved each week from
-growing without bound.
+Dates are UTC. `w<WW>` is the week of the year and forces a save once a week, because
+`actions/cache` skips its save on an exact-key hit and an entry would otherwise be written
+once and never refreshed. It carries no year of its own, since the month segment pins one and
+a week number never repeats within a month. `<YYYY-MM>` ends the lineage: nothing saved in a
+previous month is reachable through the fallback, which is what stops an entry that is
+base-restored and re-saved each week from growing without bound.
 
 No manifest is in either key. A change to `.envrc`, `pixi.lock` or `Cargo.lock` restores the
 week's entry as a base and the job updates it, rather than cold-starting.
