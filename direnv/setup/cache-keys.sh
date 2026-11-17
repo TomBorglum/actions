@@ -22,7 +22,10 @@ normalized="$(printf '%s\n' "$cache_paths" \
   | awk '{ gsub(/^[[:space:]]+|[[:space:]]+$/, ""); if ($0 != "") print }' \
   | LC_ALL=C sort)"
 
-digest_of() { printf '%s' "$1" | sha256sum | cut -c1-12; }
+digest_of() {
+  local value=$1
+  printf '%s' "$value" | sha256sum | cut -c1-12
+}
 
 # One key holds one set of contents, and a save is skipped on an exact hit, so a key shared by
 # two callers whose contents differ is owned by whichever saves first and the rest restore it
