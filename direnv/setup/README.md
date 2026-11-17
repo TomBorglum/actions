@@ -33,7 +33,8 @@ when to pin more tightly.
 | Input | Default | Description |
 | --- | --- | --- |
 | `working-directory` | `.` | Directory containing the `.envrc` to activate. |
-| `cache` | `'true'` | Cache the toolchain dirs (`~/.sdkman`, `~/.fnm`, `~/.pixi`) across runs, keyed on the `.envrc`. Set to `'false'` to disable. |
+| `cache` | `'true'` | Cache the toolchain dirs (`~/.sdkman`, `~/.fnm`, `~/.pixi`) and the paths in `cache-paths`. See [Caching](#caching) and [Disabling it](#disabling-it). |
+| `cache-paths` | `''` | Newline-separated paths to cache as a second entry — a pixi environment, a cargo home, a build output directory. Ignored when `cache` is `'false'`. |
 | `stub-directives` | `''` | Whitespace-separated directive names to define as no-ops. See [below](#stub-directives). |
 
 The action fails if there is no `.envrc` in `working-directory`, and it fails if the
@@ -76,6 +77,62 @@ rewritten — CI would otherwise run against dependencies that are not the commi
 A workspace that also declares [`requires-pixi`](https://pixi.prefix.dev/latest/reference/pixi_manifest/)
 composes with this for free: if the version the `.envrc` pins does not satisfy it, pixi
 itself refuses, so this action needs no code for it.
+
+## Caching
+
+Two entries, both restored before the `.envrc` is evaluated:
+
+| Entry | Paths | Key |
+| --- | --- | --- |
+| toolchains | `~/.sdkman`, `~/.fnm`, `~/.pixi` | `direnv-setup-tools-<digest>-<os>-<arch>-<YYYY-MM>-w<WW>` |
+| `cache-paths` | what the input names | `direnv-setup-paths-<digest>-<os>-<arch>-<YYYY-MM>-w<WW>` |
+
+Each entry has one fallback rung: its own key truncated after the month,
+`direnv-setup-tools-<digest>-<os>-<arch>-<YYYY-MM>-`.
+
+Each `<digest>` is the first 12 hex characters of a `sha256`, computed by
+[`cache-keys.sh`](cache-keys.sh) — over `working-directory` for the toolchain entry, and over
+`working-directory` and the sorted `cache-paths` list for the other. Reordering the list
+leaves the latter unchanged.
+
+A key held by two callers whose contents differ belongs to whichever saved first. The others
+restore that entry, install what is missing, and are refused the save for the rest of the
+window. `working-directory` is in both digests for that reason: one repository's workspaces
+can declare different toolchains.
+
+`<arch>` is named separately because `<os>` is `Linux` on x86_64 and aarch64 alike.
+
+Dates are UTC. `w<WW>` rotates the entry weekly, so a long-lived lineage is refreshed rather
+than written once. `<YYYY-MM>` ends it: nothing saved in a previous month is reachable through
+the fallback, which is what bounds the size of an entry that is base-restored and re-saved
+each week.
+
+No manifest is in either key. A change to `.envrc`, `pixi.lock` or `Cargo.lock` restores the
+week's entry as a base and the job updates it, rather than cold-starting. A cold start happens
+on the first run of a month, on an edit to the `cache-paths` list, and on a
+`working-directory` change.
+
+`cache-paths` is saved only on a push to the repository's default branch, and every other
+event restores without saving: only the default branch's entries are readable from another
+branch. The cost is that a pull request has no entry of its own, so a dependency change
+recompiles on every push to it until merge. The toolchain entry saves on every event.
+
+Each run logs both keys, whether each hit was on the exact key, and the size of every cached
+path.
+
+### Disabling it
+
+`cache: 'false'` skips both entries and computes no key.
+
+Its use is verifying a cold install: a warm entry leaves each directive's install-dir guard
+skipping its download, so the installer goes unexercised. The input is the only lever for
+that, because the restore happens inside the action and before activation, so no step can
+clear the toolchain dirs first. The `cache-disabled` job in
+[`direnv-setup-test.yml`](../../.github/workflows/direnv-setup-test.yml) is what uses it.
+
+A toolchain dir cached in a bad state is restored by every run in that month's lineage, and a
+job that fails mid-install still caches one. Delete the entry from the repository's caches.
+Set `cache: 'false'` only while finding out what keeps writing a bad one.
 
 ## How the environment reaches later steps
 

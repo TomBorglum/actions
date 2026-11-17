@@ -5,16 +5,16 @@ name: direnv/setup test
 # $GITHUB_ENV export, not just a transient direnv shell), that a name set by a stock
 # directive travels just as far as one set by a use_* directive, that an undefined
 # directive is an error rather than a silent no-op, that stub-directives neutralises one
-# without exporting anything or accepting an injected name, and that the action fails when
-# there is no .envrc to act on.
+# without exporting anything or accepting an injected name, that both cache entries key as
+# documented, and that the action fails when there is no .envrc to act on.
 #
 # Deliberately NOT path-filtered. These tests gate the merge via the direnv-setup-tests-pass job
 # below, and a path-filtered workflow cannot do that: when the filter excludes a PR its
 # checks stay Pending rather than passing, so a required check over a filtered workflow
 # deadlocks the pull request permanently. Running always is cheap because the action's own
-# actions/cache step keys on the fixture .envrc, which never changes - after the first run
-# every toolchain dir is an exact-key hit and each directive's install guard skips its
-# download.
+# toolchain cache entry rotates weekly rather than per commit - within a week every
+# toolchain dir is an exact-key hit and each directive's install guard skips its download.
+# cache-disabled pays a full install on every run, which is the point of that job.
 #
 # No secrets are used anywhere here, so a fork pull request running this at
 # contents: read can reach nothing.
@@ -321,6 +321,155 @@ jobs:
             exit 1
           fi
 
+  # A wrong key fails silently: a colliding one reports cache-hit: true having restored none of
+  # the caller's paths, and a restore-keys rung that is not a prefix of its own key never
+  # matches. Run the script directly, so every case is asserted without a cache round trip.
+  cache-keys:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Assert the key shape and the digest's inputs
+        run: |
+          set -euo pipefail
+          out="$(mktemp -d)"
+          # Output file per case, so each assertion reads back its own keys.
+          keys() {
+            local case=$1 working_directory=$2 cache_paths=$3
+            GITHUB_OUTPUT="$out/$case" WORKING_DIRECTORY="$working_directory" \
+              CACHE_PATHS="$cache_paths" RUNNER_OS=Linux RUNNER_ARCH=X64 \
+              bash direnv/setup/cache-keys.sh
+          }
+          val() {
+            local case=$1 field=$2
+            grep -m1 "^$field=" "$out/$case" | cut -d= -f2-
+          }
+
+          cargo=$'target\n.pixi/envs\n~/.cargo/registry'
+          # The same set, reordered and padded, which must digest identically: a consumer
+          # tidying the YAML list must not cold-start the lineage.
+          reordered=$'  ~/.cargo/registry  \n\ntarget\n  .pixi/envs\n'
+
+          keys base . "$cargo"
+          keys reordered . "$reordered"
+          keys nested apps/api "$cargo"
+          keys extra . "$cargo"$'\n~/.cargo/git'
+          keys empty . ""
+          keys nested-empty apps/api ""
+
+          week="$(date -u '+w%U')"
+          month="$(date -u '+%Y-%m')"
+
+          # The shape itself. Each digest precedes the rotating segments, which is what puts
+          # it in the fallback rung below and keeps one lineage from prefix-matching another.
+          tools_key="$(val base tools-key)"
+          paths_key="$(val base paths-key)"
+          echo "tools-key=$tools_key paths-key=$paths_key"
+          test "$tools_key" = "direnv-setup-tools-$(val base tools-digest)-Linux-X64-$month-$week"
+          test "$paths_key" = "direnv-setup-paths-$(val base digest)-Linux-X64-$month-$week"
+          [[ "$(val base tools-digest)" =~ ^[0-9a-f]{12}$ ]]
+          [[ "$(val base digest)" =~ ^[0-9a-f]{12}$ ]]
+
+          # Each rung is a prefix of its own key, and ends after the month, so a month's
+          # fallback cannot reach into the month before it.
+          for entry in tools paths; do
+            key="$(val base "$entry-key")"
+            rung="$(val base "$entry-restore-keys")"
+            test "$rung" = "${key%-$week}-"
+            test "$rung" = "${rung%-$month-}-$month-"
+            [[ "$key" == "$rung"* ]]
+          done
+
+          # What the paths digest is and is not sensitive to.
+          test "$(val reordered digest)" = "$(val base digest)"
+          test "$(val nested digest)" != "$(val base digest)"
+          test "$(val extra digest)" != "$(val base digest)"
+          test "$(val empty digest)" != "$(val base digest)"
+
+          # The toolchain lineage separates on working-directory and on nothing else. Without
+          # the first, every job in a repository shares one toolchain entry: whichever saves
+          # first owns it, and a job whose .envrc declares a different toolchain restores that
+          # entry, installs from scratch, and is refused the save for the rest of the window.
+          test "$(val nested tools-digest)" != "$(val base tools-digest)"
+          test "$(val reordered tools-digest)" = "$(val base tools-digest)"
+          test "$(val extra tools-digest)" = "$(val base tools-digest)"
+          test "$(val empty tools-digest)" = "$(val base tools-digest)"
+          test "$(val nested-empty tools-digest)" = "$(val nested tools-digest)"
+
+          # An unset cache-paths still has to yield a well-formed key: the action computes
+          # both keys unconditionally and only the cache steps are gated on the input.
+          [[ "$(val empty paths-key)" =~ ^direnv-setup-paths-[0-9a-f]{12}-Linux-X64-[0-9]{4}-[0-9]{2}-w[0-9]{2}$ ]]
+
+  # The cache-paths input end to end, including a path no fixture creates and the reporting
+  # step that runs inside the action and would fail it.
+  cache-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run direnv/setup against the pixi fixture with cache-paths
+        uses: ./direnv/setup
+        with:
+          working-directory: direnv/setup/test/fixture-pixi
+          # ~/.cargo/registry is deliberately a path no fixture creates: a consumer's list
+          # routinely names a directory the job has not produced yet, and neither the cache
+          # step nor the reporting step may fail on it.
+          cache-paths: |
+            direnv/setup/test/fixture-pixi/.pixi/envs
+            ~/.cargo/registry
+
+      - name: Assert the runtime still propagated to later steps
+        run: |
+          set -euo pipefail
+          # activate-pixi's assertion, repeated to prove cache-paths changed nothing about
+          # activation.
+          test "$(pixi --version)" = "pixi 0.81.0"
+          python --version
+          command -v python | grep -q "/direnv/setup/test/fixture-pixi/.pixi/envs/default/bin/"
+
+      - name: Assert nothing was written into the checkout
+        run: |
+          set -euo pipefail
+          # .pixi/ is gitignored by the fixture's own workspace, so a tracked-file change
+          # here would mean a cache path had been restored over the checkout.
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "caching with cache-paths modified tracked files:" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
+
+  # The only job that installs a toolchain rather than restoring one. Every other job gets a
+  # warm entry after the week's first run, so each directive's install-dir guard skips its
+  # download and the installer goes unverified - the gap install-arm64 closes for
+  # install-direnv.sh. README.md states why cache: 'false' is the only lever for it.
+  cache-disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Unconditional, so the install below is cold whatever the runner image ships.
+      - name: Remove the toolchain dirs
+        run: |
+          set -euo pipefail
+          rm -rf ~/.sdkman ~/.fnm ~/.pixi
+          test ! -e ~/.pixi
+
+      - name: Run direnv/setup against the pixi fixture with caching off
+        uses: ./direnv/setup
+        with:
+          working-directory: direnv/setup/test/fixture-pixi
+          cache: 'false'
+
+      - name: Assert the toolchain was installed rather than restored
+        run: |
+          set -euo pipefail
+          # ~/.pixi was removed above and no cache step ran, so its presence is the
+          # installer's work and the version proves the pin reached the download.
+          test -d ~/.pixi
+          test "$(pixi --version)" = "pixi 0.81.0"
+          python --version
+          command -v python | grep -q "/direnv/setup/test/fixture-pixi/.pixi/envs/default/bin/"
+
   # The required status check for this action, and the only job name the main-protection
   # ruleset needs to know. Listing all nine above would be nine entries to keep in sync,
   # and a renamed job would quietly stop gating; this aggregate fails closed instead.
@@ -348,6 +497,9 @@ jobs:
       - stub-directives-rejected
       - install-arm64
       - missing-envrc
+      - cache-keys
+      - cache-paths
+      - cache-disabled
     runs-on: ubuntu-latest
     steps:
       - name: Assert every job succeeded
