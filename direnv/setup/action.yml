@@ -55,8 +55,7 @@ runs:
       shell: bash
       run: bash "$GITHUB_ACTION_PATH/install-direnv.sh"
 
-    # Both cache steps run before activation, which is what performs the installs they
-    # exist to skip.
+    # Every cache step precedes activation, which performs the installs they exist to skip.
     - name: Compute cache keys
       id: cache-keys
       if: ${{ inputs.cache == 'true' }}
@@ -66,23 +65,12 @@ runs:
         CACHE_PATHS: ${{ inputs.cache-paths }}
       run: bash "$GITHUB_ACTION_PATH/cache-keys.sh"
 
-    # One entry for the toolchain dirs, directive-agnostic: the path lists every tool dir a
-    # directive might populate, and actions/cache skips a path that does not exist (an
-    # fnm-only .envrc caches only ~/.fnm, etc.). On a full hit, each directive's install-dir
-    # guard skips every download.
-    #
-    # The key rotates on a time window rather than hashing the .envrc, so a version bump
-    # reuses the previous week's entry as a base instead of cold-starting. What bounds the
-    # growth that base-restoring causes is the month segment: nothing from the previous month
-    # is reachable through the fallback rung, so a superseded toolchain survives at most into
-    # the following month. The week segment exists because actions/cache skips its save on an
-    # exact-key hit - without a rotating segment an entry would be written once and never
-    # refreshed.
+    # One unconditional entry for every tool dir a directive might populate, so the key need
+    # not know which directives an .envrc uses.
     #
     # stub-directives is deliberately absent from the key: a stub installs nothing, so it
-    # cannot change what any of these directories hold. So is cache-paths - these three dirs
-    # live in HOME and are identical for every caller, and folding the caller's lineage in
-    # here would store a second copy of ~/.pixi per workspace in a monorepo.
+    # cannot change what these dirs hold. cache-paths is absent too, so editing the list does
+    # not cold-start the toolchains.
     - name: Cache toolchains
       id: cache-tools
       if: ${{ inputs.cache == 'true' }}
@@ -95,16 +83,8 @@ runs:
         key: ${{ steps.cache-keys.outputs.tools-key }}
         restore-keys: ${{ steps.cache-keys.outputs.tools-restore-keys }}
 
-    # The caller's paths, saved only on a push to the default branch. A cache is scoped to
-    # key, version AND branch, and only the default branch's entries are readable from
-    # another branch - so an entry written on a pull request is readable from that branch
-    # alone, counts against the repository's 10 GB while it lives, and is discarded with the
-    # branch. Saving on the default branch only is what gives every branch one entry to
-    # restore, and it is what keeps a single live lineage per month however many pull
-    # requests are open.
-    #
-    # The cost is explicit: a pull request has no warm lineage of its own, so a dependency
-    # change recompiles on every push to it until merge.
+    # Saved only on a push to the default branch: only that branch's entries are readable from
+    # another branch. README.md states the cost to a pull request.
     - name: Cache the caller's paths
       id: cache-paths
       if: ${{ inputs.cache == 'true' && inputs.cache-paths != '' && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
@@ -123,16 +103,9 @@ runs:
         key: ${{ steps.cache-keys.outputs.paths-key }}
         restore-keys: ${{ steps.cache-keys.outputs.paths-restore-keys }}
 
-    # Which key each entry resolved to and what it restored. Without this a fallback hit is
-    # indistinguishable from an exact one in a consumer's log, and the two differ in what the
-    # job then has to rebuild.
-    #
-    # actions/cache publishes cache-hit alone; only actions/cache/restore also publishes
-    # cache-matched-key. So the matched key is reported for the restore-only case and omitted
-    # otherwise, where exact-hit=false means a fallback rung or a miss and that step's own log
-    # says which. Only one of the two steps above runs, so each value is read from whichever
-    # did. The compressed size of a save needs nothing here - actions/cache's post-step logs
-    # it.
+    # actions/cache publishes cache-hit alone; cache-matched-key comes from
+    # actions/cache/restore, so the matched key is read from the restore step only. Only one of
+    # the two steps above runs, so each other value is read from whichever did.
     - name: Report the caches
       if: ${{ inputs.cache == 'true' }}
       shell: bash
@@ -151,8 +124,7 @@ runs:
         sizes() {
           local line path
           while IFS= read -r line; do
-            # actions/cache expands a leading ~/ itself, so the same expansion is needed
-            # here for du to be given the path the entry actually holds.
+            # actions/cache expands a leading ~/; du needs the same expansion.
             path="${line/#\~\//$HOME/}"
             if [[ -e "$path" ]]; then
               du -sh "$path"

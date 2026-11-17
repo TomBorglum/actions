@@ -84,41 +84,38 @@ Two entries, both restored before the `.envrc` is evaluated:
 
 | Entry | Paths | Key |
 | --- | --- | --- |
-| toolchains | `~/.sdkman`, `~/.fnm`, `~/.pixi` | `direnv-setup-tools-<os>-<YYYY-MM>-w<WW>` |
-| `cache-paths` | what the input names | `direnv-setup-<digest>-<os>-<YYYY-MM>-w<WW>` |
+| toolchains | `~/.sdkman`, `~/.fnm`, `~/.pixi` | `direnv-setup-tools-<digest>-<os>-<arch>-<YYYY-MM>-w<WW>` |
+| `cache-paths` | what the input names | `direnv-setup-paths-<digest>-<os>-<arch>-<YYYY-MM>-w<WW>` |
 
 Each entry has one fallback rung: its own key truncated after the month,
-`direnv-setup-tools-<os>-<YYYY-MM>-`.
+`direnv-setup-tools-<digest>-<os>-<arch>-<YYYY-MM>-`.
 
-`<digest>` is the first 12 hex characters of the `sha256` of `working-directory` and the
-`cache-paths` list sorted, computed by [`cache-keys.sh`](cache-keys.sh). Reordering the list
-leaves it unchanged. Two callers naming different path sets therefore get different
-lineages, which is a requirement and not tidiness: one key holds one set of paths, so a
-second caller saving a different set under the same key is reported `cache-hit: true` having
-restored none of its own.
+Each `<digest>` is the first 12 hex characters of a `sha256`, computed by
+[`cache-keys.sh`](cache-keys.sh) — over `working-directory` for the toolchain entry, and over
+`working-directory` and the sorted `cache-paths` list for the other. Reordering the list
+leaves the latter unchanged.
 
-Dates are UTC. `w<WW>` is the week of the year and forces a save once a week, because
-`actions/cache` skips its save on an exact-key hit and an entry would otherwise be written
-once and never refreshed. It carries no year of its own, since the month segment pins one and
-a week number never repeats within a month. `<YYYY-MM>` ends the lineage: nothing saved in a
-previous month is reachable through the fallback, which is what stops an entry that is
-base-restored and re-saved each week from growing without bound.
+A key held by two callers whose contents differ belongs to whichever saved first. The others
+restore that entry, install what is missing, and are refused the save for the rest of the
+window. `working-directory` is in both digests for that reason: one repository's workspaces
+can declare different toolchains.
+
+`<arch>` is named separately because `<os>` is `Linux` on x86_64 and aarch64 alike.
+
+Dates are UTC. `w<WW>` rotates the entry weekly, so a long-lived lineage is refreshed rather
+than written once. `<YYYY-MM>` ends it: nothing saved in a previous month is reachable through
+the fallback, which is what bounds the size of an entry that is base-restored and re-saved
+each week.
 
 No manifest is in either key. A change to `.envrc`, `pixi.lock` or `Cargo.lock` restores the
-week's entry as a base and the job updates it, rather than cold-starting.
+week's entry as a base and the job updates it, rather than cold-starting. A cold start happens
+on the first run of a month, on an edit to the `cache-paths` list, and on a
+`working-directory` change.
 
-A cold start happens on the first run of a month, on an edit to the `cache-paths` list, and
-on a `working-directory` change.
-
-`cache-paths` is saved only on a push to the repository's default branch; every other event
-restores without saving. A cache is scoped to key, version and branch, and only the default
-branch's entries are readable from another branch — so an entry written on a pull request is
-readable from that branch alone, counts against the repository's cache quota while it lives,
-and is discarded with the branch. The cost of saving on one branch: a pull request has no
-entry of its own, so a dependency change recompiles on every push to it until merge.
-
-The toolchain entry saves on every event. It is small, and restoring it is what makes a pull
-request's install fast.
+`cache-paths` is saved only on a push to the repository's default branch, and every other
+event restores without saving: only the default branch's entries are readable from another
+branch. The cost is that a pull request has no entry of its own, so a dependency change
+recompiles on every push to it until merge. The toolchain entry saves on every event.
 
 Each run logs both keys, whether each hit was on the exact key, and the size of every cached
 path.
@@ -127,18 +124,15 @@ path.
 
 `cache: 'false'` skips both entries and computes no key.
 
-Its use is verifying a cold install. With a warm entry each directive's install-dir guard
-skips its download, so the installer itself goes unexercised — which is what the
-`cache-disabled` job in
-[`direnv-setup-test.yml`](../../.github/workflows/direnv-setup-test.yml) covers. The input is
-the only lever for it: the restore happens inside the action, before activation, so a step
-cannot clear the toolchain dirs first.
+Its use is verifying a cold install: a warm entry leaves each directive's install-dir guard
+skipping its download, so the installer goes unexercised. The input is the only lever for
+that, because the restore happens inside the action and before activation, so no step can
+clear the toolchain dirs first. The `cache-disabled` job in
+[`direnv-setup-test.yml`](../../.github/workflows/direnv-setup-test.yml) is what uses it.
 
-A toolchain dir cached in a bad state is restored by every run in that month's lineage.
-`actions/cache` saves in a post-step even when an earlier step failed, so a job that died
-mid-install caches a partial dir, and the install-dir guard then skips the download and runs
-against it. Delete the entry from the repository's caches; reach for `cache: 'false'` only if
-something keeps writing a bad one while you find out why.
+A toolchain dir cached in a bad state is restored by every run in that month's lineage, and a
+job that fails mid-install still caches one. Delete the entry from the repository's caches.
+Set `cache: 'false'` only while finding out what keeps writing a bad one.
 
 ## How the environment reaches later steps
 
