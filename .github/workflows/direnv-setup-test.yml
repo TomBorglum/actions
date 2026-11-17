@@ -5,8 +5,8 @@ name: direnv/setup test
 # $GITHUB_ENV export, not just a transient direnv shell), that a name set by a stock
 # directive travels just as far as one set by a use_* directive, that an undefined
 # directive is an error rather than a silent no-op, that stub-directives neutralises one
-# without exporting anything or accepting an injected name, and that the action fails when
-# there is no .envrc to act on.
+# without exporting anything or accepting an injected name, that both cache entries key as
+# documented, and that the action fails when there is no .envrc to act on.
 #
 # Deliberately NOT path-filtered. These tests gate the merge via the direnv-setup-tests-pass job
 # below, and a path-filtered workflow cannot do that: when the filter excludes a PR its
@@ -14,6 +14,7 @@ name: direnv/setup test
 # deadlocks the pull request permanently. Running always is cheap because the action's own
 # toolchain cache entry rotates weekly rather than per commit - within a week every
 # toolchain dir is an exact-key hit and each directive's install guard skips its download.
+# cache-disabled pays a full install on every run, which is the point of that job.
 #
 # No secrets are used anywhere here, so a fork pull request running this at
 # contents: read can reach nothing.
@@ -429,6 +430,42 @@ jobs:
             exit 1
           fi
 
+  # The only job that installs a toolchain rather than restoring one. Every other job here
+  # gets a warm toolchain entry after the week's first run, so each directive's install-dir
+  # guard skips its download and the installer goes unverified - the same gap install-arm64
+  # exists to close for install-direnv.sh's aarch64 branch.
+  #
+  # cache: 'false' is the only lever for it. The action restores inside itself, before
+  # activation, so a step here cannot clear the toolchain dirs first and no fixture can route
+  # around a key that ignores working-directory.
+  cache-disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Unconditional, so the install below is cold whatever the runner image ships.
+      - name: Remove the toolchain dirs
+        run: |
+          set -euo pipefail
+          rm -rf ~/.sdkman ~/.fnm ~/.pixi
+          test ! -e ~/.pixi
+
+      - name: Run direnv/setup against the pixi fixture with caching off
+        uses: ./direnv/setup
+        with:
+          working-directory: direnv/setup/test/fixture-pixi
+          cache: 'false'
+
+      - name: Assert the toolchain was installed rather than restored
+        run: |
+          set -euo pipefail
+          # ~/.pixi was removed above and no cache step ran, so its presence here is the
+          # installer's work and the version proves the pin reached the download.
+          test -d ~/.pixi
+          test "$(pixi --version)" = "pixi 0.81.0"
+          python --version
+          command -v python | grep -q "/direnv/setup/test/fixture-pixi/.pixi/envs/default/bin/"
+
   # The required status check for this action, and the only job name the main-protection
   # ruleset needs to know. Listing all nine above would be nine entries to keep in sync,
   # and a renamed job would quietly stop gating; this aggregate fails closed instead.
@@ -458,6 +495,7 @@ jobs:
       - missing-envrc
       - cache-keys
       - cache-paths
+      - cache-disabled
     runs-on: ubuntu-latest
     steps:
       - name: Assert every job succeeded

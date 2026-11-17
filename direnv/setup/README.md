@@ -33,7 +33,7 @@ when to pin more tightly.
 | Input | Default | Description |
 | --- | --- | --- |
 | `working-directory` | `.` | Directory containing the `.envrc` to activate. |
-| `cache` | `'true'` | Cache the toolchain dirs (`~/.sdkman`, `~/.fnm`, `~/.pixi`) and the paths in `cache-paths`. Set to `'false'` to disable both. See [Caching](#caching). |
+| `cache` | `'true'` | Cache the toolchain dirs (`~/.sdkman`, `~/.fnm`, `~/.pixi`) and the paths in `cache-paths`. See [Caching](#caching) and [Disabling it](#disabling-it). |
 | `cache-paths` | `''` | Newline-separated paths to cache as a second entry — a pixi environment, a cargo home, a build output directory. Ignored when `cache` is `'false'`. |
 | `stub-directives` | `''` | Whitespace-separated directive names to define as no-ops. See [below](#stub-directives). |
 
@@ -122,6 +122,23 @@ request's install fast.
 
 Each run logs both keys, whether each hit was on the exact key, and the size of every cached
 path.
+
+### Disabling it
+
+`cache: 'false'` skips both entries and computes no key.
+
+Its use is verifying a cold install. With a warm entry each directive's install-dir guard
+skips its download, so the installer itself goes unexercised — which is what the
+`cache-disabled` job in
+[`direnv-setup-test.yml`](../../.github/workflows/direnv-setup-test.yml) covers. The input is
+the only lever for it: the restore happens inside the action, before activation, so a step
+cannot clear the toolchain dirs first.
+
+A toolchain dir cached in a bad state is restored by every run in that month's lineage.
+`actions/cache` saves in a post-step even when an earlier step failed, so a job that died
+mid-install caches a partial dir, and the install-dir guard then skips the download and runs
+against it. Delete the entry from the repository's caches; reach for `cache: 'false'` only if
+something keeps writing a bad one while you find out why.
 
 ## How the environment reaches later steps
 
