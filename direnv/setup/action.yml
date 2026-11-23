@@ -31,6 +31,14 @@ inputs:
       'false'.
     required: false
     default: ''
+  cache-key-files:
+    description: >-
+      Newline-separated glob patterns, relative to the workspace root, naming the files
+      whose contents are hashed into the cache-paths key - lockfiles and the like. A change
+      to a listed file rotates that entry, so the run that installs the difference is the
+      run that saves it. A pattern matching no file fails the action. Requires cache-paths.
+    required: false
+    default: ''
   stub-directives:
     description: >-
       Whitespace-separated directive names to define as no-ops. This action rejects an
@@ -63,6 +71,7 @@ runs:
       env:
         WORKING_DIRECTORY: ${{ inputs.working-directory }}
         CACHE_PATHS: ${{ inputs.cache-paths }}
+        CACHE_KEY_FILES: ${{ inputs.cache-key-files }}
       run: bash "$GITHUB_ACTION_PATH/cache-keys.sh"
 
     # One unconditional entry for every tool dir a directive might populate, so the key need
@@ -111,6 +120,7 @@ runs:
       shell: bash
       env:
         DIGEST: ${{ steps.cache-keys.outputs.digest }}
+        MANIFESTS: ${{ steps.cache-keys.outputs.manifests-digest }}
         CACHE_PATHS: ${{ inputs.cache-paths }}
         TOOLS_KEY: ${{ steps.cache-keys.outputs.tools-key }}
         TOOLS_HIT: ${{ steps.cache-tools.outputs.cache-hit }}
@@ -118,6 +128,7 @@ runs:
         PATHS_HIT: ${{ steps.cache-paths.outputs.cache-hit || steps.restore-paths.outputs.cache-hit }}
         PATHS_MATCHED: ${{ steps.restore-paths.outputs.cache-matched-key }}
         PATHS_SAVED: ${{ steps.cache-paths.conclusion }}
+        PATHS_EXACT: ${{ steps.cache-paths.outputs.cache-hit }}
       run: |
         set -euo pipefail
 
@@ -142,10 +153,12 @@ runs:
           exit 0
         fi
 
-        line="cache-paths (digest $DIGEST): key=$PATHS_KEY exact-hit=${PATHS_HIT:-false}"
+        line="cache-paths (digest $DIGEST${MANIFESTS:+ manifests $MANIFESTS}): key=$PATHS_KEY exact-hit=${PATHS_HIT:-false}"
         if [[ -n "$PATHS_MATCHED" ]]; then line="$line matched=$PATHS_MATCHED"; fi
         echo "$line"
-        if [[ "$PATHS_SAVED" == "success" ]]; then
+        if [[ "$PATHS_SAVED" == "success" && "$PATHS_EXACT" == "true" ]]; then
+          echo "cache-paths: restored on the exact key, so the post step will not save it again"
+        elif [[ "$PATHS_SAVED" == "success" ]]; then
           echo "cache-paths: this entry will be saved at job end"
         else
           echo "cache-paths: restore only - a save happens on a push to the default branch"
