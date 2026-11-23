@@ -20,7 +20,8 @@ read -r month week <<< "$(date -u '+%Y-%m w%U')"
 # LC_ALL=C: a locale's collation ignores punctuation, so the same list would sort differently
 # between runners and cold-start an unchanged lineage.
 normalize() {
-  printf '%s\n' "$1" \
+  local list=$1
+  printf '%s\n' "$list" \
     | awk '{ gsub(/^[[:space:]]+|[[:space:]]+$/, ""); if ($0 != "") print }' \
     | LC_ALL=C sort
 }
@@ -48,9 +49,10 @@ digest="$(
 
 # The pattern is a glob, so the expansion is unquoted; an empty IFS keeps a space in a path whole.
 expand() {
+  local pattern=$1
   local IFS=
   # shellcheck disable=SC2206
-  matches=($1)
+  matches=($pattern)
 }
 
 manifests_digest=""
