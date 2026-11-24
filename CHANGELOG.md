@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.5.0](https://github.com/TomBorglum/actions/compare/v3.4.0...v3.5.0) (2026-11-24)
+
+
+### Features
+
+* **direnv/setup:** rotate the cache-paths key on a manifest hash ([#32](https://github.com/TomBorglum/actions/issues/32)) ([cfbe0a2](https://github.com/TomBorglum/actions/commit/cfbe0a2e82e91c6d168928f5c0fee059f1ac6b9a))
+
+
+### Dependencies
+
+* Bump SonarSource/sonarqube-scan-action from 8.4.1 to 8.5.0 in /sonar/scan in the published-actions group across 1 directory ([#30](https://github.com/TomBorglum/actions/issues/30)) ([d35c08f](https://github.com/TomBorglum/actions/commit/d35c08f0e2db156d13dea3f86ffeaf4eb9067102))
+
 ## [3.4.0](https://github.com/TomBorglum/actions/compare/v3.3.0...v3.4.0) (2026-11-17)
 
 
