@@ -34,9 +34,8 @@ inputs:
   cache-paths-manifests:
     description: >-
       Newline-separated glob patterns, relative to the workspace root, naming the files
-      whose contents are hashed into the cache-paths key - lockfiles and the like. A change
-      to a listed file rotates that entry, so the run that installs the difference is the
-      run that saves it. A pattern matching no file fails the action. Requires cache-paths.
+      whose contents are hashed into the cache-paths key. A change to a listed file rotates
+      that entry. A pattern matching no file fails the action. Requires cache-paths.
     required: false
     default: ''
   stub-directives:

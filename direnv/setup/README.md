@@ -112,18 +112,15 @@ each week.
 
 `<manifests>` is the first 12 hex characters of a `sha256` over the path and contents of every
 file `cache-paths-manifests` matches. Moving or editing a listed file changes it; reordering the
-patterns does not. The toolchain key holds no manifest. The `cache-paths` entry is refreshed
-when a listed file changes or when the week turns, whichever comes first: the job restores the
-lineage's newest entry as a base, installs the difference, and saves under the new key. With
-`cache-paths-manifests` empty, `<manifests>` and its preceding `-` are absent and the key is
-unchanged.
+patterns does not. The toolchain key holds no manifest. The `cache-paths` entry rotates when a
+listed file changes or when the week turns, whichever comes first. With
+`cache-paths-manifests` empty, `<manifests>` and its preceding `-` are absent.
 
 Patterns are relative to the workspace root and expand with `globstar`. A pattern matching no
 file fails the action, as does one matching a directory, and so does naming patterns while
-`cache-paths` is empty: in each case the segment would rotate nothing and no run would say so.
-A listed file belongs outside every `cache-paths` entry. The keys are computed before the
-restore, so a file inside a cached path matches nothing on a clean runner, and on a dirty one
-the hash would be taken over restored content.
+`cache-paths` is empty. A listed file belongs outside every `cache-paths` entry: the keys are
+computed before the restore, so a file inside a cached path matches nothing on a clean runner,
+and on a dirty one the hash covers restored content.
 
 A cold start happens on the first run of a month, on an edit to the `cache-paths` list, and on
 a `working-directory` change.

@@ -400,8 +400,7 @@ jobs:
           # both keys unconditionally and only the cache steps are gated on the input.
           [[ "$(val empty paths-key)" =~ ^direnv-setup-paths-[0-9a-f]{12}-Linux-X64-[0-9]{4}-[0-9]{2}-w[0-9]{2}$ ]]
 
-          # The input appends one segment to the paths key, after the week, and changes no other
-          # output. The second file's name holds a space, which the hash must carry whole.
+          # The second file's name holds a space, which the hash must carry whole.
           lock_a="$out/a.lock"
           lock_b="$out/b lock"
           printf 'one\n' > "$lock_a"

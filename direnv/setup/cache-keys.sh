@@ -89,8 +89,8 @@ fi
 tools_prefix="direnv-setup-tools-${tools_digest}-${os}-${arch}-${month}-"
 paths_prefix="direnv-setup-paths-${digest}-${os}-${arch}-${month}-"
 
-# Unlike the digest, the manifests segment is last: it rotates one lineage's key, so it stays
-# out of paths_prefix and a changed manifest base-restores the lineage's newest entry.
+# The manifests segment is last, against the rule above: out of paths_prefix, so a changed
+# manifest still matches the fallback rung.
 paths_key="${paths_prefix}${week}"
 if [[ -n "$manifests_digest" ]]; then paths_key="${paths_key}-${manifests_digest}"; fi
 
