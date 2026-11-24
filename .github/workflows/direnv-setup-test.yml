@@ -335,10 +335,10 @@ jobs:
           out="$(mktemp -d)"
           # Output file per case, so each assertion reads back its own keys.
           keys() {
-            local case=$1 working_directory=$2 cache_paths=$3
+            local case=$1 working_directory=$2 cache_paths=$3 cache_paths_manifests=${4:-}
             GITHUB_OUTPUT="$out/$case" WORKING_DIRECTORY="$working_directory" \
-              CACHE_PATHS="$cache_paths" RUNNER_OS=Linux RUNNER_ARCH=X64 \
-              bash direnv/setup/cache-keys.sh
+              CACHE_PATHS="$cache_paths" CACHE_PATHS_MANIFESTS="$cache_paths_manifests" \
+              RUNNER_OS=Linux RUNNER_ARCH=X64 bash direnv/setup/cache-keys.sh
           }
           val() {
             local case=$1 field=$2
@@ -400,6 +400,58 @@ jobs:
           # both keys unconditionally and only the cache steps are gated on the input.
           [[ "$(val empty paths-key)" =~ ^direnv-setup-paths-[0-9a-f]{12}-Linux-X64-[0-9]{4}-[0-9]{2}-w[0-9]{2}$ ]]
 
+          # The second file's name holds a space, which the hash must carry whole.
+          lock_a="$out/a.lock"
+          lock_b="$out/b lock"
+          printf 'one\n' > "$lock_a"
+          printf 'two\n' > "$lock_b"
+          keys keyed . "$cargo" "$lock_a"$'\n'"$lock_b"
+          keys keyed-reordered . "$cargo" $'\n  '"$lock_b"$'  \n\n'"$lock_a"$'\n'
+          keys keyed-empty . "$cargo" ""
+          printf 'changed\n' > "$lock_a"
+          keys keyed-edited . "$cargo" "$lock_a"$'\n'"$lock_b"
+
+          manifests="$(val keyed manifests-digest)"
+          [[ "$manifests" =~ ^[0-9a-f]{12}$ ]]
+          test "$(val keyed paths-key)" = "$paths_key-$manifests"
+          test "$(val keyed-empty paths-key)" = "$paths_key"
+          test -z "$(val keyed-empty manifests-digest)"
+          test -z "$(val base manifests-digest)"
+
+          # The rung still ends after the month and excludes the segment, so a manifest change
+          # base-restores the lineage's newest entry instead of cold-starting.
+          key="$(val keyed paths-key)"
+          rung="$(val keyed paths-restore-keys)"
+          test "$rung" = "$(val base paths-restore-keys)"
+          test "$rung" = "${key%-$week-$manifests}-"
+          test "$rung" = "${rung%-$month-}-$month-"
+          [[ "$key" == "$rung"* ]]
+
+          for field in digest tools-digest tools-key tools-restore-keys; do
+            test "$(val keyed "$field")" = "$(val base "$field")"
+          done
+
+          test "$(val keyed-reordered manifests-digest)" = "$manifests"
+          test "$(val keyed-edited manifests-digest)" != "$manifests"
+
+          # Each of these would otherwise leave the lineage unrotated with nothing saying so.
+          if keys no-match . "$cargo" "$out/none-*.lock" 2> "$out/no-match.err"; then
+            echo "expected a pattern matching no file to fail" >&2
+            exit 1
+          fi
+          grep -qF "$out/none-*.lock" "$out/no-match.err"
+          if keys directory . "$cargo" "$out" 2> "$out/directory.err"; then
+            echo "expected a pattern matching a directory to fail" >&2
+            exit 1
+          fi
+          grep -qF "$out" "$out/directory.err"
+          if keys no-paths . "" "$lock_a" 2> "$out/no-paths.err"; then
+            echo "expected cache-paths-manifests without cache-paths to fail" >&2
+            exit 1
+          fi
+          grep -q 'cache-paths-manifests' "$out/no-paths.err"
+          grep -q 'cache-paths' "$out/no-paths.err"
+
   # The cache-paths input end to end, including a path no fixture creates and the reporting
   # step that runs inside the action and would fail it.
   cache-paths:
@@ -417,6 +469,7 @@ jobs:
           cache-paths: |
             direnv/setup/test/fixture-pixi/.pixi/envs
             ~/.cargo/registry
+          cache-paths-manifests: direnv/setup/test/fixture-pixi/pixi.lock
 
       - name: Assert the runtime still propagated to later steps
         run: |

@@ -35,6 +35,7 @@ when to pin more tightly.
 | `working-directory` | `.` | Directory containing the `.envrc` to activate. |
 | `cache` | `'true'` | Cache the toolchain dirs (`~/.sdkman`, `~/.fnm`, `~/.pixi`) and the paths in `cache-paths`. See [Caching](#caching) and [Disabling it](#disabling-it). |
 | `cache-paths` | `''` | Newline-separated paths to cache as a second entry — a pixi environment, a cargo home, a build output directory. Ignored when `cache` is `'false'`. |
+| `cache-paths-manifests` | `''` | Glob patterns naming the files that rotate the `cache-paths` key — `pixi.lock`, `Cargo.lock`. Requires `cache-paths`. See [Caching](#caching). |
 | `stub-directives` | `''` | Whitespace-separated directive names to define as no-ops. See [below](#stub-directives). |
 
 The action fails if there is no `.envrc` in `working-directory`, and it fails if the
@@ -85,10 +86,12 @@ Two entries, both restored before the `.envrc` is evaluated:
 | Entry | Paths | Key |
 | --- | --- | --- |
 | toolchains | `~/.sdkman`, `~/.fnm`, `~/.pixi` | `direnv-setup-tools-<digest>-<os>-<arch>-<YYYY-MM>-w<WW>` |
-| `cache-paths` | what the input names | `direnv-setup-paths-<digest>-<os>-<arch>-<YYYY-MM>-w<WW>` |
+| `cache-paths` | what the input names | `direnv-setup-paths-<digest>-<os>-<arch>-<YYYY-MM>-w<WW>-<manifests>` |
 
 Each entry has one fallback rung: its own key truncated after the month,
-`direnv-setup-tools-<digest>-<os>-<arch>-<YYYY-MM>-`.
+`direnv-setup-tools-<digest>-<os>-<arch>-<YYYY-MM>-`. The rung of the `cache-paths` entry
+therefore excludes `<manifests>`, which is what makes a manifest change a base-restore rather
+than a cold start.
 
 Each `<digest>` is the first 12 hex characters of a `sha256`, computed by
 [`cache-keys.sh`](cache-keys.sh) — over `working-directory` for the toolchain entry, and over
@@ -107,18 +110,28 @@ than written once. `<YYYY-MM>` ends it: nothing saved in a previous month is rea
 the fallback, which is what bounds the size of an entry that is base-restored and re-saved
 each week.
 
-No manifest is in either key. A change to `.envrc`, `pixi.lock` or `Cargo.lock` restores the
-week's entry as a base and the job updates it, rather than cold-starting. A cold start happens
-on the first run of a month, on an edit to the `cache-paths` list, and on a
-`working-directory` change.
+`<manifests>` is the first 12 hex characters of a `sha256` over the path and contents of every
+file `cache-paths-manifests` matches. Moving or editing a listed file changes it; reordering the
+patterns does not. The toolchain key holds no manifest. The `cache-paths` entry rotates when a
+listed file changes or when the week turns, whichever comes first. With
+`cache-paths-manifests` empty, `<manifests>` and its preceding `-` are absent.
+
+Patterns are relative to the workspace root and expand with `globstar`. A pattern matching no
+file fails the action, as does one matching a directory, and so does naming patterns while
+`cache-paths` is empty. A listed file belongs outside every `cache-paths` entry: the keys are
+computed before the restore, so a file inside a cached path matches nothing on a clean runner,
+and on a dirty one the hash covers restored content.
+
+A cold start happens on the first run of a month, on an edit to the `cache-paths` list, and on
+a `working-directory` change.
 
 `cache-paths` is saved only on a push to the repository's default branch, and every other
 event restores without saving: only the default branch's entries are readable from another
 branch. The cost is that a pull request has no entry of its own, so a dependency change
 recompiles on every push to it until merge. The toolchain entry saves on every event.
 
-Each run logs both keys, whether each hit was on the exact key, and the size of every cached
-path.
+Each run logs both keys, whether each hit was on the exact key, the manifest hash, whether the
+`cache-paths` entry will be saved at job end, and the size of every cached path.
 
 ### Disabling it
 
