@@ -7,7 +7,7 @@ set -euo pipefail
 output="${GITHUB_OUTPUT:-/dev/stdout}"
 working_directory="${WORKING_DIRECTORY:-.}"
 cache_paths="${CACHE_PATHS:-}"
-cache_key_files="${CACHE_KEY_FILES:-}"
+cache_paths_manifests="${CACHE_PATHS_MANIFESTS:-}"
 os="${RUNNER_OS:-unknown}"
 # RUNNER_OS is 'Linux' on x86_64 and aarch64 alike, so the architecture has to be named
 # separately or an arm64 job restores x86_64 toolchain binaries.
@@ -27,7 +27,7 @@ normalize() {
 }
 
 normalized="$(normalize "$cache_paths")"
-key_patterns="$(normalize "$cache_key_files")"
+manifest_patterns="$(normalize "$cache_paths_manifests")"
 
 digest_of() {
   local value=$1
@@ -47,7 +47,8 @@ digest="$(
   )"
 )"
 
-# The pattern is a glob, so the expansion is unquoted; an empty IFS keeps a space in a path whole.
+# The pattern is a glob, so the expansion is unquoted; an empty IFS keeps a space in a path
+# whole.
 expand() {
   local pattern=$1
   local IFS=
@@ -56,9 +57,10 @@ expand() {
 }
 
 manifests_digest=""
-if [[ -n "$key_patterns" ]]; then
+if [[ -n "$manifest_patterns" ]]; then
   if [[ -z "$normalized" ]]; then
-    echo "direnv/setup: cache-key-files is set but cache-paths is empty, so the entry it rotates would not exist" >&2
+    echo "direnv/setup: cache-paths-manifests is set but cache-paths is empty, so the" \
+      "entry it rotates would not exist" >&2
     exit 1
   fi
   shopt -s globstar nullglob
@@ -66,17 +68,18 @@ if [[ -n "$key_patterns" ]]; then
   while IFS= read -r pattern; do
     expand "$pattern"
     if [[ ${#matches[@]} -eq 0 ]]; then
-      echo "direnv/setup: cache-key-files pattern '$pattern' matches no file" >&2
+      echo "direnv/setup: cache-paths-manifests pattern '$pattern' matches no file" >&2
       exit 1
     fi
     for match in "${matches[@]}"; do
       if [[ ! -f "$match" ]]; then
-        echo "direnv/setup: cache-key-files pattern '$pattern' matches '$match', which is not a regular file" >&2
+        echo "direnv/setup: cache-paths-manifests pattern '$pattern' matches '$match'," \
+          "which is not a regular file" >&2
         exit 1
       fi
       files+=("$match")
     done
-  done <<< "$key_patterns"
+  done <<< "$manifest_patterns"
   mapfile -d '' -t files < <(printf '%s\0' "${files[@]}" | LC_ALL=C sort -zu)
   manifests_digest="$(digest_of "$(sha256sum -- "${files[@]}")")"
 fi
@@ -86,8 +89,8 @@ fi
 tools_prefix="direnv-setup-tools-${tools_digest}-${os}-${arch}-${month}-"
 paths_prefix="direnv-setup-paths-${digest}-${os}-${arch}-${month}-"
 
-# Unlike the digest, the manifests segment is last: it rotates one lineage's key, so it stays out
-# of paths_prefix and a changed manifest restores the lineage's newest entry as a base.
+# Unlike the digest, the manifests segment is last: it rotates one lineage's key, so it stays
+# out of paths_prefix and a changed manifest base-restores the lineage's newest entry.
 paths_key="${paths_prefix}${week}"
 if [[ -n "$manifests_digest" ]]; then paths_key="${paths_key}-${manifests_digest}"; fi
 

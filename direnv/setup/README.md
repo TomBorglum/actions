@@ -35,7 +35,7 @@ when to pin more tightly.
 | `working-directory` | `.` | Directory containing the `.envrc` to activate. |
 | `cache` | `'true'` | Cache the toolchain dirs (`~/.sdkman`, `~/.fnm`, `~/.pixi`) and the paths in `cache-paths`. See [Caching](#caching) and [Disabling it](#disabling-it). |
 | `cache-paths` | `''` | Newline-separated paths to cache as a second entry — a pixi environment, a cargo home, a build output directory. Ignored when `cache` is `'false'`. |
-| `cache-key-files` | `''` | Newline-separated glob patterns, relative to the workspace root, naming the files hashed into the `cache-paths` key — lockfiles and the like. A pattern matching no file fails the action. Requires `cache-paths`. See [Caching](#caching). |
+| `cache-paths-manifests` | `''` | Glob patterns naming the files that rotate the `cache-paths` key — `pixi.lock`, `Cargo.lock`. Requires `cache-paths`. See [Caching](#caching). |
 | `stub-directives` | `''` | Whitespace-separated directive names to define as no-ops. See [below](#stub-directives). |
 
 The action fails if there is no `.envrc` in `working-directory`, and it fails if the
@@ -111,12 +111,19 @@ the fallback, which is what bounds the size of an entry that is base-restored an
 each week.
 
 `<manifests>` is the first 12 hex characters of a `sha256` over the path and contents of every
-file `cache-key-files` matches. Moving or editing a listed file changes it; reordering the
+file `cache-paths-manifests` matches. Moving or editing a listed file changes it; reordering the
 patterns does not. The toolchain key holds no manifest. The `cache-paths` entry is refreshed
 when a listed file changes or when the week turns, whichever comes first: the job restores the
 lineage's newest entry as a base, installs the difference, and saves under the new key. With
-`cache-key-files` empty, `<manifests>` and its preceding `-` are absent and the key is
+`cache-paths-manifests` empty, `<manifests>` and its preceding `-` are absent and the key is
 unchanged.
+
+Patterns are relative to the workspace root and expand with `globstar`. A pattern matching no
+file fails the action, as does one matching a directory, and so does naming patterns while
+`cache-paths` is empty: in each case the segment would rotate nothing and no run would say so.
+A listed file belongs outside every `cache-paths` entry. The keys are computed before the
+restore, so a file inside a cached path matches nothing on a clean runner, and on a dirty one
+the hash would be taken over restored content.
 
 A cold start happens on the first run of a month, on an edit to the `cache-paths` list, and on
 a `working-directory` change.

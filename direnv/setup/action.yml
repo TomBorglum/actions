@@ -31,7 +31,7 @@ inputs:
       'false'.
     required: false
     default: ''
-  cache-key-files:
+  cache-paths-manifests:
     description: >-
       Newline-separated glob patterns, relative to the workspace root, naming the files
       whose contents are hashed into the cache-paths key - lockfiles and the like. A change
@@ -71,7 +71,7 @@ runs:
       env:
         WORKING_DIRECTORY: ${{ inputs.working-directory }}
         CACHE_PATHS: ${{ inputs.cache-paths }}
-        CACHE_KEY_FILES: ${{ inputs.cache-key-files }}
+        CACHE_PATHS_MANIFESTS: ${{ inputs.cache-paths-manifests }}
       run: bash "$GITHUB_ACTION_PATH/cache-keys.sh"
 
     # One unconditional entry for every tool dir a directive might populate, so the key need
